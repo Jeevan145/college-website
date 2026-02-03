@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admission – Step 1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+
+<div class="card admission-card">
+
+  <h2>Online Admission</h2>
+  <p class="subtitle">Step 1 of 3 – Student & Academic Details</p>
+
+  <div class="progress-bar">
+    <div class="progress-fill step-1"></div>
+  </div>
+
+  <form method="post">
+
+    <!-- ================= STUDENT PERSONAL ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Student Personal Details</h3>
+
+      <div class="form-grid two-col">
+        <input name="student_name" placeholder="Student Full Name" required>
+        <input
+  name="student_mobile"
+  placeholder="Mobile Number"
+  type="tel"
+  pattern="[0-9]{10}"
+  maxlength="10"
+  minlength="10"
+  inputmode="numeric"
+  required
+  oninput="this.value = this.value.replace(/[^0-9]/g,'')"
+/>
+
+
+        <input type="email" name="student_email" placeholder="Email ID" required>
+        <input type="date" name="dob" required>
+
+        <select name="gender" required>
+          <option value="">Select Gender</option>
+          <option>Male</option>
+          <option>Female</option>
+          <option>Other</option>
+        </select>
+
+        <select name="nationality" required>
+          <option>Indian</option>
+          <option>Other</option>
+        </select>
+
+        <input name="religion" placeholder="Religion">
+
+        <select name="caste_category" required>
+          <option value="">Caste Category</option>
+          <option>GEN</option>
+          <option>OBC</option>
+          <option>SC</option>
+          <option>ST</option>
+        </select>
+
+        <!-- ALLOCATED CATEGORY -->
+        <select name="allocated_category" required>
+          <option value="">Allocated Category</option>
+          <option>1G</option>
+          <option>SCG</option>
+          <option>STG</option>
+          <option>2AG</option>
+          <option>2BG</option>
+          <option>3AG</option>
+          <option>3BG</option>
+          <option>GM</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ================= ACADEMIC DETAILS ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Academic Details</h3>
+
+      <div class="form-grid two-col">
+        <select name="qualifying_exam" id="qualifying_exam"
+                required onchange="toggleAcademicFields()">
+          <option value="">Qualifying Exam</option>
+          <option value="SSLC">SSLC</option>
+          <option value="PUC">PUC</option>
+          <option value="ITI">ITI</option>
+        </select>
+
+        <input name="year_of_passing" placeholder="Year of Passing" required>
+        <input name="register_number" placeholder="Register Number" required>
+      </div>
+
+      <!-- SSLC / PUC MARKS -->
+      <div id="school-marks" class="form-grid two-col" style="display:none;">
+        <input name="maths_marks" placeholder="Maths Marks">
+        <input name="science_marks" placeholder="Science Marks">
+        <input name="total_marks" placeholder="Total Marks">
+        <input name="marks_obtained" placeholder="Marks Obtained">
+        <input name="percentage" placeholder="Percentage">
+      </div>
+
+      <!-- ITI MARKS -->
+      <div id="iti-marks" class="form-grid two-col" style="display:none;">
+        <input name="total_marks_iti" placeholder="Total Marks">
+        <input name="marks_obtained_iti" placeholder="Marks Obtained">
+        <input name="percentage_iti" placeholder="Percentage">
+      </div>
+    </div>
+
+    <!-- ================= ADMISSION DETAILS ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Admission Details</h3>
+
+      <div class="form-grid two-col">
+        <select name="admission_quota" required>
+          <option value="">Admission Quota</option>
+          <option>Government</option>
+          <option>SNQ</option>
+          <option>Management</option>
+        </select>
+
+        <select name="branch" required>
+          <option value="">Select Branch</option>
+          <option>Computer Engineering</option>
+          <option>Electronics & Communication</option>
+          <option>Mechanical Engineering</option>
+          <option>Automobile Engineering</option>
+        </select>
+
+        <input type="password" name="password"
+               placeholder="Create Password" required>
+      </div>
+    </div>
+
+    <!-- ================= NEXT ================= -->
+    <div class="form-actions">
+      <button type="submit" class="btn primary">
+        Next →
+      </button>
+    </div>
+
+  </form>
+
+</div>
+
+<script>
+function toggleAcademicFields() {
+  const exam = document.getElementById("qualifying_exam").value;
+
+  document.getElementById("school-marks").style.display =
+    (exam === "SSLC" || exam === "PUC") ? "grid" : "none";
+
+  document.getElementById("iti-marks").style.display =
+    (exam === "ITI") ? "grid" : "none";
+}
+</script>
+
+</body>
+</html>

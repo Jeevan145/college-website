@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Set Fees | Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="card">
+  <h2>Set Student Fees</h2>
+  <p class="subtitle">Admin Panel</p>
+
+  <form method="post">
+    <input type="text" name="admission_id" placeholder="Admission ID" required>
+    <input type="number" name="admission_fee" placeholder="Admission Fee" required>
+    <input type="number" name="tuition_fee" placeholder="Tuition Fee" required>
+    <input type="number" name="exam_fee" placeholder="Exam Fee" required>
+
+    <select name="payment_status">
+      <option value="PENDING">PENDING</option>
+      <option value="PAID">PAID</option>
+    </select>
+
+    <button type="submit">Save Fees</button>
+  </form>
+
+  <a class="link" href="/admin">⬅ Back to Dashboard</a>
+</div>
+
+</body>
+</html>

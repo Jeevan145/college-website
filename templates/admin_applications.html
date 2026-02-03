@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pending Admissions</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+
+<div class="card dashboard">
+
+  <h2>Pending Admissions</h2>
+  <p class="subtitle">Approve student applications</p>
+
+  {% if students %}
+
+    {% for student in students %}
+      <div class="box">
+
+        <h3 style="color:#ffcf4d">{{ student.student_name }}</h3>
+
+        <p><b>ID:</b> {{ student.admission_id }}</p>
+        <p><b>Branch:</b> {{ student.branch }}</p>
+        <p><b>Mobile:</b> {{ student.mobile }}</p>
+
+        <div style="margin-top:15px; display:flex; gap:15px;">
+          <form method="get" style="margin-bottom:20px;display:flex;gap:10px;">
+
+  <input name="q"
+         placeholder="Search name or ID"
+         value="{{ q }}"
+         style="padding:10px;border-radius:10px;">
+
+  <select name="status">
+    <option value="INACTIVE">Pending</option>
+    <option value="ACTIVE">Approved</option>
+    <option value="REJECTED">Rejected</option>
+  </select>
+
+  <button class="btn primary">Search</button>
+</form>
+
+
+          <!-- VIEW APPLICATION -->
+          <a href="/admin/student/{{ student.admission_id }}"
+             class="btn secondary"
+             style="padding:10px 18px;">
+             👁 View Application
+          </a>
+          <a href="/admin/download-all/{{ student.admission_id }}"
+   class="btn primary">
+   ⬇ Download All Documents
+</a>
+
+
+          <!-- APPROVE -->
+          <a href="/approve/{{ student.admission_id }}"
+             class="btn primary"
+             style="padding:10px 18px;">
+             ✅ Approve
+          </a>
+
+        </div>
+
+      </div>
+      <form action="/reject/{{ student.admission_id }}" method="post"
+      style="margin-top:10px;">
+
+  <input name="reason"
+         placeholder="Reason for rejection"
+         required
+         style="padding:8px;border-radius:8px;width:100%;">
+
+  <button class="btn secondary" style="margin-top:8px;">
+    ❌ Reject
+  </button>
+</form>
+
+    {% endfor %}
+
+  {% else %}
+    <p>No pending applications.</p>
+  {% endif %}
+
+  <a href="/admin" class="link">⬅ Back to Dashboard</a>
+
+</div>
+
+</body>
+</html>

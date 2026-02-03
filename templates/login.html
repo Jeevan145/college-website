@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login | SVP</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="card">
+  <h2>SVP Login Portal</h2>
+  <p class="subtitle">Sri Venkateshwara Polytechnic</p>
+
+  <form method="post">
+    <select name="role">
+      <option value="student">Student Login</option>
+      <option value="admin">Admin Login</option>
+    </select>
+
+    <input type="text" name="username" placeholder="Admission ID / Username" required>
+    <input type="password" name="password" placeholder="Password" required>
+
+    <button type="submit">Login</button>
+  </form>
+  <a href="/home">Home</a>
+
+
+
+</body>
+</html>

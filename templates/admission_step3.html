@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admission – Step 3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+
+<div class="card admission-card">
+
+  <h2>Online Admission</h2>
+  <p class="subtitle">Step 3 of 3 – Documents & Verification</p>
+
+  <div class="progress-bar">
+    <div class="progress-fill step-3"></div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data">
+
+    <!-- ================= AADHAAR ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Aadhaar Details</h3>
+
+      <div class="form-grid two-col">
+        <input name="aadhaar_number"
+               placeholder="Aadhaar Number"
+               maxlength="12"
+               required>
+
+        <input type="file"
+               name="aadhaar_file"
+               accept=".pdf,.jpg,.png"
+               required>
+      </div>
+    </div>
+
+    <!-- ================= CASTE ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Caste Certificate</h3>
+
+      <div class="form-grid two-col">
+        <input name="caste_rd_number"
+               placeholder="Caste Certificate RD Number"
+               required>
+
+        <input type="file"
+               name="caste_certificate"
+               accept=".pdf,.jpg,.png"
+               required>
+      </div>
+    </div>
+
+    <!-- ================= INCOME ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Income Certificate</h3>
+
+      <div class="form-grid two-col">
+        <input name="income_rd_number"
+               placeholder="Income Certificate RD Number"
+               required>
+
+        <input type="file"
+               name="income_certificate"
+               accept=".pdf,.jpg,.png"
+               required>
+      </div>
+    </div>
+
+    <!-- ================= MARKS CARD ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Qualifying Exam Marks Card</h3>
+
+      <div class="form-grid two-col">
+        <select name="marks_exam_type" required>
+          <option value="">Select Exam</option>
+          <option>SSLC</option>
+          <option>PUC</option>
+          <option>ITI</option>
+        </select>
+
+        <input type="file"
+               name="marks_card"
+               accept=".pdf,.jpg,.png"
+               required>
+      </div>
+    </div>
+
+    <!-- ================= STUDENT PHOTO ================= -->
+    <div class="form-section">
+      <h3 class="section-title">Student Passport Size Photo</h3>
+
+      <div class="form-grid two-col">
+        <input type="text"
+               value="Passport Size Photo"
+               disabled>
+
+        <input type="file"
+               name="student_photo"
+               accept=".jpg,.jpeg,.png"
+               required>
+      </div>
+    </div>
+
+    <!-- ================= SUBMIT ================= -->
+    <div class="form-actions space-between">
+      <a href="/admission/step-2" class="btn secondary">
+        ← Back
+      </a>
+
+      <button type="submit" class="btn primary">
+        Submit Application
+      </button>
+    </div>
+
+  </form>
+
+</div>
+
+</body>
+</html>

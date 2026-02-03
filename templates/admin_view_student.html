@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Student Application</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+
+<div class="card dashboard">
+
+  <h2>Student Application</h2>
+  <p class="subtitle">Admission ID: {{ student.admission_id }}</p>
+
+  <!-- BASIC -->
+  <div class="box">
+    <h3>Student Info</h3>
+    <p><b>Name:</b> {{ student.student_name }}</p>
+    <p><b>Branch:</b> {{ student.branch }}</p>
+    <p><b>Mobile:</b> {{ student.mobile }}</p>
+    <p><b>Status:</b> {{ student.status }}</p>
+  </div>
+<h3>Student Academic & Category Details</h3>
+
+<table class="details-table">
+  <tr><th>DOB</th><td>{{ student.dob }}</td></tr>
+  <tr><th>Gender</th><td>{{ student.gender }}</td></tr>
+  <tr><th>Nationality</th><td>{{ student.nationality }}</td></tr>
+  <tr><th>Religion</th><td>{{ student.religion }}</td></tr>
+  <tr><th>Caste</th><td>{{ student.caste_category }}</td></tr>
+  <tr><th>Allocated Category</th><td>{{ student.allocated_category }}</td></tr>
+  <tr><th>Qualifying Exam</th><td>{{ student.qualifying_exam }}</td></tr>
+  <tr><th>Year of Passing</th><td>{{ student.year_of_passing }}</td></tr>
+  <tr><th>Register No</th><td>{{ student.register_number }}</td></tr>
+  <tr><th>Admission Quota</th><td>{{ student.admission_quota }}</td></tr>
+</table>
+
+  <!-- PARENT -->
+  <div class="box">
+    <h3>Parent Info</h3>
+    <p><b>Father:</b> {{ personal.father_name }} ({{ personal.father_mobile }})</p>
+    <p><b>Mother:</b> {{ personal.mother_name }} ({{ personal.mother_mobile }})</p>
+  </div>
+
+  <!-- ADDRESS -->
+  <div class="box">
+    <h3>Address</h3>
+<p><b>Residential:</b> {{ personal.residential_address or "Not Provided" }}</p>
+<p><b>Permanent:</b> {{ personal.permanent_address or "Not Provided" }}</p>
+
+  </div>
+
+  <!-- DOCUMENTS -->
+ <div class="box">
+  <h3>Uploaded Documents</h3>
+
+  {% if personal.photo_file %}
+    📷 Photo:
+    <a href="{{ url_for('static', filename='uploads/' + personal.photo_file) }}"
+       target="_blank">View</a><br>
+  {% else %}
+    📷 Photo: Not Uploaded<br>
+  {% endif %}
+
+  {% if personal.aadhaar_file %}
+    🪪 Aadhaar:
+    <a href="{{ url_for('static', filename='uploads/' + personal.aadhaar_file) }}"
+       target="_blank">View</a><br>
+  {% else %}
+    🪪 Aadhaar: Not Uploaded<br>
+  {% endif %}
+
+  {% if personal.caste_certificate_file %}
+    📄 Caste Certificate:
+    <a href="{{ url_for('static', filename='uploads/' + personal.caste_certificate_file) }}"
+       target="_blank">View</a><br>
+  {% else %}
+    📄 Caste Certificate: Not Uploaded<br>
+  {% endif %}
+
+  {% if personal.income_certificate_file %}
+    📄 Income Certificate:
+    <a href="{{ url_for('static', filename='uploads/' + personal.income_certificate_file) }}"
+       target="_blank">View</a><br>
+  {% else %}
+    📄 Income Certificate: Not Uploaded<br>
+  {% endif %}
+</div>
+
+
+  <a class="link" href="/admin/applications">⬅ Back</a>
+
+</div>
+
+</body>
+</html>
