@@ -1,45 +1,48 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>Admin Dashboard | SVP</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
-<div class="dashboard">
-  <div class="header">
-    <h2>Admin Dashboard</h2>
-    <p class="subtitle">Sri Venkateshwara Polytechnic ERP</p>
+  <div class="dashboard">
+    <div class="header">
+      <h2>Admin Dashboard</h2>
+      <p class="subtitle">Sri Venkateshwara Polytechnic ERP</p>
+    </div>
+
+    <div class="grid">
+      <div class="box">
+        <h3>🎓 Admissions</h3>
+        <p>Approve new student applications</p>
+        <a class="link" href="/admin/applications">Open</a>
+      </div>
+
+      <div class="box">
+        <h3>📘 Students</h3>
+        <p>Add & manage student records</p>
+        <a class="link" href="/add-student">Open</a>
+      </div>
+
+      <div class="box">
+        <h3>📑 Education</h3>
+        <p>Enter SSLC / ITI / PUC details</p>
+        <a class="link" href="/add-education">Open</a>
+      </div>
+
+      <div class="box">
+        <h3>💰 Fees</h3>
+        <p>Set & update fee status</p>
+        <a class="link" href="/admin/fees">Open</a>
+      </div>
+    </div>
+
+    <a class="link logout" href="/logout">🚪 Logout</a>
   </div>
-
-  <div class="grid">
-    <div class="box">
-      <h3>🎓 Admissions</h3>
-      <p>Approve new student applications</p>
-      <a class="link" href="/admin/applications">Open</a>
-    </div>
-
-    <div class="box">
-      <h3>📘 Students</h3>
-      <p>Add & manage student records</p>
-      <a class="link" href="/add-student">Open</a>
-    </div>
-
-    <div class="box">
-      <h3>📑 Education</h3>
-      <p>Enter SSLC / ITI / PUC details</p>
-      <a class="link" href="/add-education">Open</a>
-    </div>
-
-    <div class="box">
-      <h3>💰 Fees</h3>
-      <p>Set & update fee status</p>
-      <a class="link" href="/admin/fees">Open</a>
-    </div>
-  </div>
-
-  <a class="link logout" href="/logout">🚪 Logout</a>
-</div>
 
 </body>
+
 </html>

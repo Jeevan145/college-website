@@ -1,34 +1,38 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>Re-upload Documents</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 </head>
+
 <body>
 
-<div class="card">
+  <div class="card">
 
-  <h2>Re-upload Documents</h2>
-  <p class="subtitle">Upload only the required documents</p>
+    <h2>Re-upload Documents</h2>
+    <p class="subtitle">Upload only the required documents</p>
 
-  <form method="post" enctype="multipart/form-data">
+    <form action="/admission/upload-documents" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="admission_id" value="{{ admission_id }}">
 
-    <div class="form-grid two-col">
-      <input type="file" name="photo">
-      <input type="file" name="marks_card">
+      <div class="form-grid two-col">
+        <input type="file" name="photo">
+        <input type="file" name="marks_card">
 
-      <input type="file" name="caste_certificate">
-      <input type="file" name="income_certificate">
-    </div>
+        <input type="file" name="caste_certificate">
+        <input type="file" name="income_certificate">
+      </div>
 
-    <div class="form-actions space-between">
-      <a href="/login" class="btn secondary">Cancel</a>
-      <button class="btn primary">Submit</button>
-    </div>
+      <div class="form-actions space-between">
+        <a href="/login" class="btn secondary">Cancel</a>
+        <button class="btn primary">Submit</button>
+      </div>
 
-  </form>
+    </form>
 
-</div>
+  </div>
 
 </body>
+
 </html>

@@ -6,7 +6,7 @@ from reportlab.lib import colors
 
 
 def generate_admission_letter(student):
-    file_path = f"admission_{student['admission_id']}.pdf"
+    file_path = f"static/pdfs/admission_{student['admission_id']}.pdf"
 
     doc = SimpleDocTemplate(file_path, pagesize=A4)
     styles = getSampleStyleSheet()
@@ -20,7 +20,6 @@ def generate_admission_letter(student):
     text = f"""
     This is to certify that <b>{student['student_name']}</b> has been admitted to
     <b>{student['branch']}</b> for the academic year 2026–27.
-
     <br/><br/>
     Admission ID: <b>{student['admission_id']}</b>
     """
@@ -34,7 +33,7 @@ def generate_admission_letter(student):
 
 
 def generate_fee_receipt(student, fees):
-    file_path = f"fee_receipt_{student['admission_id']}.pdf"
+    file_path = f"static/pdfs/fee_receipt_{student['admission_id']}.pdf"
 
     doc = SimpleDocTemplate(file_path, pagesize=A4)
     styles = getSampleStyleSheet()

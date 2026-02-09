@@ -228,7 +228,7 @@ def admission_step1():
             "student_email": request.form["student_email"],
             "dob": request.form["dob"],
             "gender": request.form["gender"],
-            "nationality": request.form["nationality"],
+            "indian_nationality": request.form["indian_nationality"],
             "religion": request.form.get("religion"),
             "caste_category": request.form["caste_category"],
             "allocated_category": request.form["allocated_category"],
@@ -270,38 +270,31 @@ def admission_step1():
 
 @app.route("/admission/step-2", methods=["GET", "POST"])
 def admission_step2():
-    if "admission" not in session:
+
+    # get admission data created in step-1
+    admission = session.get("admission")
+    if not admission:
         return redirect("/admission/step-1")
 
     if request.method == "POST":
-        session["admission"].update({
-            "father_name": request.form["father_name"],
-            "father_mobile": request.form["father_mobile"],
-            "mother_name": request.form["mother_name"],
-            "mother_mobile": request.form["mother_mobile"],
-            "residential_address": request.form["residential_address"],
-            "permanent_address": request.form["permanent_address"]
+        admission.update({
+            "father_name": request.form.get("father_name"),
+            "father_mobile": request.form.get("father_mobile"),
+            "mother_name": request.form.get("mother_name"),
+            "mother_mobile": request.form.get("mother_mobile"),
+            "residential_address": request.form.get("residential_address"),
+            "permanent_address": request.form.get("permanent_address"),
         })
 
+        # VERY IMPORTANT
+        session["admission"] = admission
         session.modified = True
+
         return redirect("/admission/step-3")
 
     return render_template("admission_step2.html")
 
 
-from datetime import date
-import hashlib
-import os
-from werkzeug.utils import secure_filename
-
-UPLOAD_FOLDER = "static/uploads"
-ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 from datetime import date
 import hashlib
@@ -318,123 +311,120 @@ def allowed_file(filename):
 
 
 from datetime import date
+import hashlib
+import os
 from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = "static/uploads"
+ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+from datetime import date
+from werkzeug.utils import secure_filename
+
+from datetime import date
+import hashlib
+
+import re
+from datetime import date
+import hashlib
 
 @app.route("/admission/step-3", methods=["GET", "POST"])
 def admission_step3():
-    if "admission" not in session:
+
+    admission = session.get("admission")
+    if not admission:
         return redirect("/admission/step-1")
 
-    admission = session["admission"]
-    admission_id = admission["admission_id"]
-
+    # =========================
+    # POST → VALIDATION & SUBMIT
+    # =========================
     if request.method == "POST":
 
-        # ================= ACADEMIC VALIDATION =================
-        if admission["qualifying_exam"] in ["SSLC", "PUC"]:
-            if not admission.get("maths_marks") or not admission.get("science_marks"):
-                return "❌ Maths and Science marks are required"
+        # ===== READ STEP-3 FORM DATA =====
+        aadhaar_number = request.form.get("aadhaar_number", "").strip()
+        caste_rd_number = request.form.get("caste_rd_number", "").strip()
+        income_rd_number = request.form.get("income_rd_number", "").strip()
 
-            if not admission.get("percentage"):
-                return "❌ Percentage is required"
+        # ===== AADHAAR VALIDATION =====
+        if not aadhaar_number.isdigit() or len(aadhaar_number) != 12:
+            return "❌ Aadhaar number must be exactly 12 digits"
 
-        if admission["qualifying_exam"] == "ITI":
-            if not admission.get("percentage_iti"):
-                return "❌ ITI Percentage is required"
+        # ===== CASTE RD VALIDATION =====
+        if not re.match(r"^[A-Za-z0-9]{6,20}$", caste_rd_number):
+            return "❌ Invalid Caste Certificate RD Number"
 
-        # ================= AGE VALIDATION =================
+        # ===== INCOME RD VALIDATION =====
+        if not re.match(r"^[A-Za-z0-9]{6,20}$", income_rd_number):
+            return "❌ Invalid Income Certificate RD Number"
+
+        # ===== AGE VALIDATION =====
         dob = date.fromisoformat(admission["dob"])
         age = (date.today() - dob).days // 365
         if age < 14:
             return "❌ Student must be at least 14 years old"
 
-        # ================= YEAR VALIDATION =================
+        # ===== YEAR VALIDATION =====
         year = int(admission["year_of_passing"])
         current_year = date.today().year
         if year > current_year or year < current_year - 10:
             return "❌ Invalid Year of Passing"
 
-        # ================= QUALIFYING EXAM =================
+        # ===== QUALIFYING EXAM =====
         if admission["qualifying_exam"] not in ["SSLC", "PUC", "ITI"]:
             return "❌ Invalid Qualifying Exam"
 
-        # ================= ITI RULE =================
+        # ===== ITI RULE =====
         if admission["qualifying_exam"] == "ITI" and admission["branch"] == "Computer Engineering":
             return "❌ ITI students are not eligible for Computer Engineering"
 
-        # ================= QUOTA & CATEGORY RULES =================
+        # ===== QUOTA RULES =====
         if admission["admission_quota"] == "SNQ" and admission["caste_category"] not in ["SC", "ST"]:
-            return "❌ SNQ quota is allowed only for SC / ST candidates"
+            return "❌ SNQ quota is only for SC / ST candidates"
 
         if admission["allocated_category"] == "GM" and admission["admission_quota"] == "SNQ":
             return "❌ GM category cannot apply under SNQ quota"
-
-        # ================= OPTIONAL FILE UPLOADS =================
-        photo = request.files.get("photo")
-        marks = request.files.get("marks_card")
-        caste = request.files.get("caste_certificate")
-        income = request.files.get("income_certificate")
-
-        photo_name = marks_name = caste_name = income_name = None
-
-        def save_file(file, prefix):
-            if file and file.filename:
-                if not allowed_file(file.filename):
-                    return None, "❌ Only PDF / JPG / PNG files are allowed"
-                filename = f"{admission_id}_{prefix}_{secure_filename(file.filename)}"
-                file.save(os.path.join(UPLOAD_FOLDER, filename))
-                return filename, None
-            return None, None
-
-        photo_name, err = save_file(photo, "photo")
-        if err: return err
-
-        marks_name, err = save_file(marks, "marks")
-        if err: return err
-
-        caste_name, err = save_file(caste, "caste")
-        if err: return err
-
-        income_name, err = save_file(income, "income")
-        if err: return err
 
         # ================= DATABASE =================
         db = get_db()
         cur = db.cursor()
 
+        # ===== CREATE STUDENT LOGIN =====
         cur.execute("""
             INSERT INTO students
             (admission_id, student_name, branch, mobile, password_hash, status)
             VALUES (%s,%s,%s,%s,%s,'INACTIVE')
         """, (
-            admission_id,
+            admission["admission_id"],
             admission["student_name"],
             admission["branch"],
             admission["student_mobile"],
             hashlib.sha256(admission["password"].encode()).hexdigest()
         ))
 
+        # ===== PERSONAL DETAILS =====
         cur.execute("""
-            INSERT INTO student_personal_details
-            (
-              admission_id,
-              dob, gender, nationality, religion,
-              caste_category, allocated_category,
-              qualifying_exam, year_of_passing, register_number,
-              admission_quota,
-              father_name, father_mobile,
-              mother_name, mother_mobile,
-              residential_address, permanent_address,
-              photo_file, marks_card_file,
-              caste_certificate_file, income_certificate_file
-            )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO student_personal_details (
+                admission_id,
+                dob, gender, indian_nationality, religion,
+                caste_category, allocated_category,
+                qualifying_exam, year_of_passing, register_number,
+                admission_quota,
+                father_name, father_mobile,
+                mother_name, mother_mobile,
+                residential_address, permanent_address
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                      %s,%s,%s,%s,%s,%s)
         """, (
-            admission_id,
+            admission["admission_id"],
             admission["dob"],
             admission["gender"],
-            admission["nationality"],
+            admission["indian_nationality"],
             admission["religion"],
             admission["caste_category"],
             admission["allocated_category"],
@@ -442,31 +432,45 @@ def admission_step3():
             admission["year_of_passing"],
             admission["register_number"],
             admission["admission_quota"],
-
             admission["father_name"],
             admission["father_mobile"],
             admission["mother_name"],
             admission["mother_mobile"],
             admission["residential_address"],
-            admission["permanent_address"],
+            admission["permanent_address"]
+        ))
 
-            photo_name,
-            marks_name,
-            caste_name,
-            income_name
+        # ===== STEP-3 DETAILS (AADHAAR / RD NUMBERS) =====
+        cur.execute("""
+            INSERT INTO student_documents
+            (admission_id, aadhaar_number, caste_rd_number, income_rd_number)
+            VALUES (%s,%s,%s,%s)
+        """, (
+            admission["admission_id"],
+            aadhaar_number,
+            caste_rd_number,
+            income_rd_number
         ))
 
         db.commit()
+        cur.close()
+        db.close()
+
+        # CLEAR SESSION
         session.pop("admission", None)
 
         return render_template(
             "admission_success.html",
-            admission_id=admission_id
+            admission_id=admission["admission_id"]
         )
 
-    return render_template("admission_step3.html")
-
-
+    # =========================
+    # GET → SHOW PAGE
+    # =========================
+    return render_template(
+        "admission_step3.html",
+        admission_id=admission["admission_id"]
+    )
 
 # =========================
 # ADMIN: VIEW APPLICATIONS
@@ -502,19 +506,20 @@ def admin_applications():
 # =========================
 @app.route("/approve/<admission_id>")
 def approve_student(admission_id):
-    if "admin" not in session:
-        return redirect("/")
-
     db = get_db()
     cur = db.cursor()
+
     cur.execute("""
         UPDATE students
         SET status='ACTIVE'
         WHERE admission_id=%s
     """, (admission_id,))
-    db.commit()
 
+    db.commit()
+    cur.close()
+    db.close()   
     return redirect("/admin/applications")
+
 @app.route("/reject/<admission_id>", methods=["POST"])
 def reject_student(admission_id):
     if "admin" not in session:
@@ -524,12 +529,16 @@ def reject_student(admission_id):
 
     db = get_db()
     cur = db.cursor()
+
     cur.execute("""
         UPDATE students
         SET status='REJECTED', rejection_reason=%s
         WHERE admission_id=%s
     """, (reason, admission_id))
+
     db.commit()
+    cur.close()
+    db.close()   
 
     return redirect("/admin/applications")
 
@@ -745,36 +754,204 @@ def admin_view_student(admission_id):
 import zipfile
 from io import BytesIO
 
+import os
+import zipfile
+from flask import send_file
 @app.route("/admin/download-all/<admission_id>")
 def download_all_docs(admission_id):
-    if "admin" not in session:
-        return redirect("/")
 
-    db = get_db()
-    cur = db.cursor(dictionary=True)
-    cur.execute("""
-        SELECT * FROM student_personal_details
-        WHERE admission_id=%s
-    """, (admission_id,))
-    p = cur.fetchone()
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
 
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as z:
-        for f in [
-            p["photo_file"],
-            p["marks_card_file"],
-            p["caste_certificate_file"],
-            p["income_certificate_file"]
-        ]:
-            z.write(f"static/uploads/{f}", f)
-
-    zip_buffer.seek(0)
-
-    return send_file(
-        zip_buffer,
-        as_attachment=True,
-        download_name=f"{admission_id}_documents.zip"
+    cursor.execute(
+        """
+        SELECT 
+            student_photo,
+            aadhaar_file,
+            caste_file,
+            income_file,
+            marks_card_file
+        FROM student_documents
+        WHERE admission_id = %s
+        """,
+        (admission_id,)
     )
+    data = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not data:
+        return "No documents found for this admission ID", 404
+
+    zip_path = f"static/uploads/{admission_id}_documents.zip"
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for _, filename in data.items():
+            if filename:
+                file_path = os.path.join("static/uploads", filename)
+                if os.path.exists(file_path):
+                    z.write(file_path, filename)
+
+    return send_file(zip_path, as_attachment=True)
+# imports
+import os
+import random
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = "static/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+# ✅ save_file MUST be here
+def save_file(file, prefix, admission_id):
+    if not file or file.filename == "":
+        return None
+
+    filename = secure_filename(file.filename)
+    ext = filename.rsplit(".", 1)[-1]
+
+    unique_name = f"{admission_id}_{prefix}_{random.randint(100000,999999)}.{ext}"
+    file_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+
+    file.save(file_path)
+    return unique_name
+
+
+# ✅ THEN your upload route
+
+
+@app.route("/admission/upload-documents", methods=["POST"])
+def upload_documents():
+
+    # 1️⃣ admission id
+    admission_id = request.form.get("admission_id")
+
+    # 2️⃣ save files
+    photo = save_file(request.files.get("student_photo"), "photo", admission_id)
+    aadhaar = save_file(request.files.get("aadhaar_file"), "aadhaar", admission_id)
+    caste = save_file(request.files.get("caste_file"), "caste", admission_id)
+    income = save_file(request.files.get("income_file"), "income", admission_id)
+    marks = save_file(request.files.get("marks_card_file"), "marks", admission_id)
+
+    # 3️⃣ student_documents table
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute(
+        "SELECT id FROM student_documents WHERE admission_id=%s",
+        (admission_id,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        cursor.execute("""
+            UPDATE student_documents SET
+                student_photo=%s,
+                aadhaar_file=%s,
+                caste_file=%s,
+                income_file=%s,
+                marks_card_file=%s
+            WHERE admission_id=%s
+        """, (photo, aadhaar, caste, income, marks, admission_id))
+    else:
+        cursor.execute("""
+            INSERT INTO student_documents
+            (admission_id, student_photo, aadhaar_file, caste_file, income_file, marks_card_file)
+            VALUES (%s,%s,%s,%s,%s,%s)
+        """, (admission_id, photo, aadhaar, caste, income, marks))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    # 4️⃣ get admission data from session
+    admission = session.get("admission")
+    if not admission:
+        return redirect("/admission/step-1")
+
+    # 5️⃣ students table (login)
+    db = get_db()
+    cur = db.cursor()
+
+    cur.execute(
+        "SELECT admission_id FROM students WHERE admission_id=%s",
+        (admission_id,)
+    )
+
+    if not cur.fetchone():
+        cur.execute("""
+            INSERT INTO students
+            (admission_id, student_name, branch, mobile, password_hash, status)
+            VALUES (%s,%s,%s,%s,%s,'INACTIVE')
+        """, (
+            admission_id,
+            admission["student_name"],
+            admission["branch"],
+            admission["student_mobile"],
+            hashlib.sha256(admission["password"].encode()).hexdigest()
+        ))
+
+    db.commit()
+    cur.close()
+    db.close()
+
+    # 🔥🔥🔥 ADD YOUR CODE HERE 🔥🔥🔥
+    # ===============================
+    # INSERT PERSONAL DETAILS (STEP 1 + 2)
+    # ===============================
+    db = get_db()
+    cur = db.cursor()
+
+    cur.execute(
+        "SELECT id FROM student_personal_details WHERE admission_id=%s",
+        (admission_id,)
+    )
+
+    if not cur.fetchone():
+        cur.execute("""
+            INSERT INTO student_personal_details (
+                admission_id,
+                dob, gender, indian_nationality, religion,
+                caste_category, allocated_category,
+                qualifying_exam, year_of_passing, register_number,
+                admission_quota,
+                father_name, father_mobile,
+                mother_name, mother_mobile,
+                residential_address, permanent_address
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            admission_id,
+            admission["dob"],
+            admission["gender"],
+            admission["indian_nationality"],
+            admission["religion"],
+            admission["caste_category"],
+            admission["allocated_category"],
+            admission["qualifying_exam"],
+            admission["year_of_passing"],
+            admission["register_number"],
+            admission["admission_quota"],
+            admission["father_name"],
+            admission["father_mobile"],
+            admission["mother_name"],
+            admission["mother_mobile"],
+            admission["residential_address"],
+            admission["permanent_address"]
+        ))
+
+    db.commit()
+    cur.close()
+    db.close()
+
+    # 6️⃣ clear session & show success
+    session.pop("admission", None)
+
+    return render_template(
+        "admission_success.html",
+        admission_id=admission_id
+    )
+
 
 @app.route("/student/reupload", methods=["GET", "POST"])
 def student_reupload():
