@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
 
+
 * {
   margin: 0;
   padding: 0;
@@ -21,15 +22,22 @@ body {
   width: 420px;
   padding: 40px;
   border-radius: 20px;
-  background: rgba(255,255,255,0.12);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(14px);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   animation: fadeIn 0.8s ease;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 h2 {
@@ -44,7 +52,8 @@ h2 {
   margin-bottom: 25px;
 }
 
-input, select {
+input,
+select {
   width: 100%;
   padding: 14px;
   border-radius: 12px;
@@ -69,7 +78,7 @@ button {
 
 button:hover {
   transform: translateY(-3px);
-  box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
 }
 
 .link {
@@ -98,15 +107,15 @@ button:hover {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px,1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
 }
 
 .box {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.15);
   padding: 25px;
   border-radius: 18px;
-  box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
   transition: 0.3s;
 }
 
@@ -127,4 +136,25 @@ button:hover {
 .logout {
   margin-top: 30px;
   display: inline-block;
+}
+input, textarea {
+  text-transform: uppercase;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.file-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.upload-instruction {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.7);
+  font-style: italic;
 }
