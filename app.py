@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from flask import Flask, render_template, request, redirect, session, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,6 +7,17 @@ import random
 import zipfile
 import re
 from datetime import date
+=======
+from flask import Flask, render_template, request, redirect, session, send_file, url_for
+import hashlib
+import random
+import csv
+import io
+import time
+import smtplib
+from email.message import EmailMessage
+from datetime import datetime
+>>>>>>> 65ee43f (Updated college website features and admin modules)
 
 from db import get_db
 from pdf_utils import generate_admission_letter, generate_fee_receipt
@@ -13,9 +25,455 @@ from pdf_utils import generate_admission_letter, generate_fee_receipt
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_key")
 
+
+def load_local_env(env_path=".env"):
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and not os.environ.get(key):
+                    os.environ[key] = value
+    except Exception:
+        # If .env cannot be read, continue with OS environment variables.
+        pass
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_local_env(os.path.join(BASE_DIR, ".env"))
+
+
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+<<<<<<< HEAD
+=======
+os.makedirs("static/pdfs", exist_ok=True)
+
+>>>>>>> 65ee43f (Updated college website features and admin modules)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+
+def ensure_employees_table():
+    db = get_db()
+    cur = db.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS employee_details (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_name VARCHAR(100) NOT NULL,
+            department VARCHAR(100) NOT NULL,
+            designation VARCHAR(100) NOT NULL,
+            mobile_no VARCHAR(15) NOT NULL,
+            employee_type VARCHAR(30) NOT NULL DEFAULT 'TEACHING',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    db.commit()
+    cur.close()
+    db.close()
+
+
+def ensure_students_rejection_reason_column():
+    db = get_db()
+    cur = db.cursor()
+    try:
+        # Safer than querying information_schema in restricted DB setups.
+        cur.execute("SHOW COLUMNS FROM students LIKE 'rejection_reason'")
+        row = cur.fetchone()
+        if not row:
+            cur.execute("ALTER TABLE students ADD COLUMN rejection_reason TEXT NULL")
+            db.commit()
+    except Exception:
+        # If column already exists/race condition, continue.
+        db.rollback()
+    finally:
+        cur.close()
+        db.close()
+
+
+def ensure_students_status_supports_rejected():
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("SHOW COLUMNS FROM students LIKE 'status'")
+        row = cur.fetchone()
+        if not row:
+            return
+
+        # row format: Field, Type, Null, Key, Default, Extra
+        col_type = str(row[1]).lower() if len(row) > 1 else ""
+        if col_type.startswith("enum(") and "'rejected'" not in col_type:
+            cur.execute("""
+                ALTER TABLE students
+                MODIFY COLUMN status ENUM('INACTIVE','ACTIVE','REJECTED')
+                NOT NULL DEFAULT 'INACTIVE'
+            """)
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        cur.close()
+        db.close()
+
+
+def ensure_students_college_reg_no_column():
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("SHOW COLUMNS FROM students LIKE 'college_reg_no'")
+        row = cur.fetchone()
+        if not row:
+            cur.execute("ALTER TABLE students ADD COLUMN college_reg_no VARCHAR(100) NULL")
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        cur.close()
+        db.close()
+
+
+def ensure_staff_auth_tables():
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS staff_accounts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                employee_id INT NULL UNIQUE,
+                employee_name VARCHAR(150) NULL,
+                department VARCHAR(150) NULL,
+                designation VARCHAR(100) NULL,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                is_verified TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("SHOW COLUMNS FROM staff_accounts LIKE 'employee_id'")
+        emp_col = cur.fetchone()
+        if emp_col and str(emp_col[2]).upper() == "NO":
+            cur.execute("ALTER TABLE staff_accounts MODIFY COLUMN employee_id INT NULL UNIQUE")
+        cur.execute("SHOW COLUMNS FROM staff_accounts LIKE 'employee_name'")
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE staff_accounts ADD COLUMN employee_name VARCHAR(150) NULL")
+        cur.execute("SHOW COLUMNS FROM staff_accounts LIKE 'department'")
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE staff_accounts ADD COLUMN department VARCHAR(150) NULL")
+        cur.execute("SHOW COLUMNS FROM staff_accounts LIKE 'designation'")
+        if not cur.fetchone():
+            cur.execute("ALTER TABLE staff_accounts ADD COLUMN designation VARCHAR(100) NULL")
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        cur.close()
+        db.close()
+
+
+def generate_otp():
+    return f"{random.randint(100000, 999999)}"
+
+
+def send_otp_email(to_email, subject, otp_code):
+    sender = os.getenv("SVP_GMAIL_USER") or os.getenv("GMAIL_USER")
+    app_password = os.getenv("SVP_GMAIL_APP_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD")
+    if not sender or not app_password:
+        return False, "Gmail SMTP is not configured on server."
+
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = to_email
+        msg.set_content(
+            f"Your OTP is: {otp_code}\n"
+            "This OTP is valid for 10 minutes.\n"
+            "If you did not request this, ignore this email."
+        )
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(sender, app_password)
+            smtp.send_message(msg)
+        return True, ""
+    except Exception:
+        return False, "Failed to send OTP email."
+
+
+def start_otp_flow(flow_key, email, extra_data):
+    otp = generate_otp()
+    session["otp_flow"] = {
+        "flow_key": flow_key,
+        "email": email.lower().strip(),
+        "otp": otp,
+        "expires_at": time.time() + 600,
+        "extra": extra_data or {},
+    }
+    return otp
+
+
+def verify_otp_flow(flow_key, email, otp):
+    flow = session.get("otp_flow") or {}
+    if not flow:
+        return False, "OTP session not found."
+    if flow.get("flow_key") != flow_key:
+        return False, "Invalid OTP flow."
+    if flow.get("email") != email.lower().strip():
+        return False, "Email mismatch."
+    if time.time() > float(flow.get("expires_at", 0)):
+        return False, "OTP expired."
+    if flow.get("otp") != str(otp).strip():
+        return False, "Incorrect OTP."
+    return True, ""
+
+
+def get_access_scope():
+    if "admin" not in session:
+        return {"allowed": False, "is_staff": False, "department": None}
+
+    staff_id = session.get("staff_id")
+    if not staff_id:
+        return {"allowed": True, "is_staff": False, "department": None}
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT id, department, designation FROM staff_accounts WHERE id=%s", (staff_id,))
+    staff = cur.fetchone()
+    cur.close()
+    db.close()
+
+    if not staff:
+        session.clear()
+        return {"allowed": False, "is_staff": False, "department": None, "designation": None}
+
+    return {
+        "allowed": True,
+        "is_staff": True,
+        "department": (staff.get("department") or "").strip(),
+        "designation": (staff.get("designation") or "").strip(),
+    }
+
+
+def student_in_department(admission_id, department):
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT branch FROM students WHERE admission_id=%s", (admission_id,))
+    row = cur.fetchone()
+    cur.close()
+    db.close()
+    return bool(row and (row.get("branch") or "").strip().lower() == (department or "").strip().lower())
+
+
+def can_edit_fees(scope):
+    if not scope.get("is_staff"):
+        return True
+    dept = (scope.get("department") or "").strip().lower()
+    desig = (scope.get("designation") or "").strip().lower()
+    if "management" in dept:
+        return True
+    if "hod" in desig or "head of department" in desig:
+        return True
+    return False
+
+
+def ensure_students_admission_year_column():
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("SHOW COLUMNS FROM students LIKE 'admission_year'")
+        row = cur.fetchone()
+        if not row:
+            cur.execute("ALTER TABLE students ADD COLUMN admission_year INT NULL")
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        cur.close()
+        db.close()
+
+
+def ensure_fee_module_tables():
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS student_fee_structure (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                admission_id VARCHAR(50) NOT NULL UNIQUE,
+                admission_fee_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                tuition_fee_yearly_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                management_fee_yearly_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                exam_fee_per_sem_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fee_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                admission_id VARCHAR(50) NOT NULL,
+                fee_type ENUM('ADMISSION','TUITION','MANAGEMENT','EXAM') NOT NULL,
+                academic_year VARCHAR(20) NULL,
+                semester_no TINYINT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                payment_date DATE NOT NULL,
+                receipt_no VARCHAR(60) NOT NULL UNIQUE,
+                remarks TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fee_structure_master (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                branch VARCHAR(100) NOT NULL,
+                semester_no TINYINT NOT NULL,
+                academic_year VARCHAR(20) NOT NULL,
+                admission_fee_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                tuition_fee_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                management_fee_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                exam_fee_due DECIMAL(10,2) NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_fee_structure_period (branch, semester_no, academic_year)
+            )
+        """)
+        cur.execute("SHOW INDEX FROM fee_payments WHERE Key_name='idx_fee_payments_admission_id'")
+        if not cur.fetchone():
+            cur.execute("CREATE INDEX idx_fee_payments_admission_id ON fee_payments(admission_id)")
+        cur.execute("SHOW INDEX FROM fee_payments WHERE Key_name='idx_fee_payments_payment_date'")
+        if not cur.fetchone():
+            cur.execute("CREATE INDEX idx_fee_payments_payment_date ON fee_payments(payment_date)")
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        cur.close()
+        db.close()
+
+
+def current_academic_year(today=None):
+    today = today or datetime.today().date()
+    start_year = today.year if today.month >= 6 else today.year - 1
+    return f"{start_year}-{str((start_year + 1) % 100).zfill(2)}"
+
+
+def parse_int_prefix(text):
+    if text is None:
+        return None
+    raw = str(text).strip()
+    if not raw:
+        return None
+    token = ""
+    for ch in raw:
+        if ch.isdigit():
+            token += ch
+        else:
+            break
+    if not token:
+        return None
+    try:
+        return int(token)
+    except ValueError:
+        return None
+
+
+def infer_current_sem(admission_year=None, year_sem=None, today=None):
+    today = today or datetime.today().date()
+    parsed_admission_year = parse_int_prefix(admission_year)
+    fallback_sem = parse_int_prefix(year_sem)
+
+    if not parsed_admission_year:
+        return min(max(fallback_sem or 1, 1), 6)
+
+    if today.year == parsed_admission_year and today.month < 6:
+        sem = 1
+    else:
+        years_elapsed = today.year - parsed_admission_year
+        sem = (years_elapsed * 2) + (1 if today.month >= 6 else 2)
+    return min(max(sem, 1), 6)
+
+
+def fee_summary_from_row(row, today=None, due=None, paid=None):
+    today = today or datetime.today().date()
+    current_sem = infer_current_sem(row.get("admission_year"), row.get("year_sem"), today=today)
+    due = due or {}
+    paid = paid or {}
+
+    admission_due_total = float(due.get("ADMISSION", 0) or 0)
+    tuition_due_total = float(due.get("TUITION", 0) or 0)
+    management_due_total = float(due.get("MANAGEMENT", 0) or 0)
+    exam_due_total = float(due.get("EXAM", 0) or 0)
+    total_due = admission_due_total + tuition_due_total + management_due_total + exam_due_total
+
+    admission_paid = float(paid.get("ADMISSION", 0) or 0)
+    tuition_paid = float(paid.get("TUITION", 0) or 0)
+    management_paid = float(paid.get("MANAGEMENT", 0) or 0)
+    exam_paid = float(paid.get("EXAM", 0) or 0)
+    total_paid = admission_paid + tuition_paid + management_paid + exam_paid
+    balance = round(total_due - total_paid, 2)
+
+    if total_paid <= 0:
+        payment_state = "NOT PAID"
+    elif balance <= 0:
+        payment_state = "PAID"
+    else:
+        payment_state = "PENDING"
+
+    result = dict(row)
+    result.update({
+        "current_sem": current_sem,
+        "admission_due_total": round(admission_due_total, 2),
+        "tuition_due_total": round(tuition_due_total, 2),
+        "management_due_total": round(management_due_total, 2),
+        "exam_due_total": round(exam_due_total, 2),
+        "total_due": round(total_due, 2),
+        "admission_paid": round(admission_paid, 2),
+        "tuition_paid": round(tuition_paid, 2),
+        "management_paid": round(management_paid, 2),
+        "exam_paid": round(exam_paid, 2),
+        "total_paid": round(total_paid, 2),
+        "balance": balance,
+        "payment_state": payment_state,
+        "academic_year": current_academic_year(today=today),
+    })
+    return result
+
+
+def infer_uploaded_doc_files(admission_id, docs):
+    resolved = dict(docs or {})
+    try:
+        all_files = [
+            f for f in os.listdir(UPLOAD_FOLDER)
+            if f.startswith(f"{admission_id}_")
+        ]
+    except Exception:
+        return resolved
+
+    all_files.sort(
+        key=lambda name: os.path.getmtime(os.path.join(UPLOAD_FOLDER, name)),
+        reverse=True
+    )
+
+    def pick(tokens):
+        for fname in all_files:
+            low = fname.lower()
+            if any(t in low for t in tokens):
+                return fname
+        return None
+
+    if not resolved.get("student_photo"):
+        resolved["student_photo"] = pick(["_photo_", "photo"])
+    if not resolved.get("aadhaar_file"):
+        resolved["aadhaar_file"] = pick(["aadhaar"])
+    if not resolved.get("caste_file"):
+        resolved["caste_file"] = pick(["caste"])
+    if not resolved.get("income_file"):
+        resolved["income_file"] = pick(["income"])
+    if not resolved.get("marks_card_file"):
+        resolved["marks_card_file"] = pick(["marks_card", "_marks_", "marks"])
+
+    return resolved
 
 
 @app.route("/")
@@ -32,30 +490,85 @@ def home():
 
 
 # =========================
-# LOGIN (ADMIN / STUDENT)
+# LOGIN / AUTH
 # =========================
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
+    return render_template("login_choice.html")
+
+
+@app.route("/login/student", methods=["GET", "POST"])
+def login_student():
+    error = ""
     if request.method == "POST":
+<<<<<<< HEAD
         role = request.form["role"]
         username = request.form["username"]
         password = request.form["password"]
+=======
+        username = request.form.get("username", "").strip()
+        password_hash = hashlib.sha256(request.form.get("password", "").encode()).hexdigest()
+
+        db = get_db()
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            SELECT * FROM students
+            WHERE UPPER(admission_id)=UPPER(%s)
+            AND password_hash=%s
+        """, (username, password_hash))
+        student = cur.fetchone()
+        cur.close()
+        db.close()
+
+        if not student:
+            error = "Invalid student credentials."
+        elif student["status"] == "ACTIVE":
+            session.clear()
+            session["student"] = student["admission_id"]
+            return redirect("/student")
+        elif student["status"] == "REJECTED":
+            return render_template("student_rejected.html", reason=student.get("rejection_reason"))
+        else:
+            return render_template("student_pending.html")
+
+    return render_template("login_student.html", error=error)
+
+
+@app.route("/login/staff", methods=["GET", "POST"])
+def login_staff_admin():
+    ensure_staff_auth_tables()
+    error = ""
+    if request.method == "POST":
+        login_type = request.form.get("login_type", "staff").strip().lower()
+        login_id = request.form.get("login_id", "").strip()
+        password_hash = hashlib.sha256(request.form.get("password", "").encode()).hexdigest()
+>>>>>>> 65ee43f (Updated college website features and admin modules)
 
         db = get_db()
         cur = db.cursor(dictionary=True)
 
-        # ================= ADMIN LOGIN =================
-        if role == "admin":
+        if login_type == "admin":
             cur.execute(
+<<<<<<< HEAD
                 "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s)",
                 (username,)
             )
             admin = cur.fetchone()
 
             if admin and check_password_hash(admin["password_hash"], password):
+=======
+                "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s) AND password_hash=%s",
+                (login_id, password_hash)
+            )
+            admin = cur.fetchone()
+            if admin:
+>>>>>>> 65ee43f (Updated college website features and admin modules)
                 session.clear()
                 session["admin"] = admin["username"]
+                cur.close()
+                db.close()
                 return redirect("/admin")
+<<<<<<< HEAD
 
             return "❌ Invalid Admin Credentials"
 
@@ -71,25 +584,269 @@ def login():
                 return "❌ Invalid Student Credentials"
 
             if student["status"] == "ACTIVE":
+=======
+            error = "Invalid admin credentials."
+        else:
+            cur.execute("""
+                SELECT * FROM staff_accounts
+                WHERE LOWER(email)=LOWER(%s) AND password_hash=%s AND is_verified=1
+            """, (login_id, password_hash))
+            staff = cur.fetchone()
+            if staff:
+>>>>>>> 65ee43f (Updated college website features and admin modules)
                 session.clear()
-                session["student"] = student["admission_id"]
-                return redirect("/student")
+                session["admin"] = staff["email"]
+                session["staff_id"] = staff["id"]
+                cur.close()
+                db.close()
+                return redirect("/admin")
+            error = "Invalid staff credentials."
 
-            elif student["status"] == "REJECTED":
-                return render_template(
-                    "student_rejected.html",
-                    reason=student.get("rejection_reason")
-                )
+        cur.close()
+        db.close()
 
+    return render_template("login_staff_admin.html", error=error)
+
+
+@app.route("/staff/register", methods=["GET", "POST"])
+def staff_register():
+    ensure_staff_auth_tables()
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT DISTINCT department FROM employee_details ORDER BY department ASC")
+    department_rows = cur.fetchall()
+    departments = [row["department"] for row in department_rows if row.get("department")]
+    if "Management Department" not in departments:
+        departments.append("Management Department")
+    departments.sort()
+    cur.close()
+    db.close()
+
+    error = ""
+    message = ""
+    if request.method == "POST":
+        employee_name = request.form.get("employee_name", "").strip()
+        department = request.form.get("department", "").strip()
+        designation = request.form.get("designation", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not employee_name:
+            error = "Employee name is required."
+        elif not department:
+            error = "Department is required."
+        elif not designation:
+            error = "Designation is required."
+        elif not email.endswith("@gmail.com"):
+            error = "Use a valid Gmail address."
+        elif len(password) < 6:
+            error = "Password must be at least 6 characters."
+        elif password != confirm_password:
+            error = "Passwords do not match."
+        else:
+            db = get_db()
+            cur = db.cursor(dictionary=True)
+            cur.execute("SELECT id FROM staff_accounts WHERE LOWER(email)=LOWER(%s)", (email,))
+            existing = cur.fetchone()
+            cur.close()
+            db.close()
+
+            if existing:
+                error = "Staff account already exists for this Gmail."
             else:
-                return render_template("student_pending.html")
+                pending = {
+                    "employee_id": None,
+                    "employee_name": employee_name,
+                    "department": department,
+                    "designation": designation,
+                    "email": email,
+                    "password_hash": hashlib.sha256(password.encode()).hexdigest(),
+                }
+                otp = start_otp_flow("staff_register", email, pending)
+                sent, msg = send_otp_email(email, "SVP Staff Registration OTP", otp)
+                if not sent:
+                    error = msg
+                else:
+                    message = "OTP sent to your Gmail. Verify to complete registration."
+                    return redirect(url_for("staff_register_verify", email=email, msg=message))
 
+<<<<<<< HEAD
     return render_template("login.html")
 
+=======
+    return render_template("staff_register.html", error=error, message=message, departments=departments)
+
+
+@app.route("/staff/register/verify", methods=["GET", "POST"])
+def staff_register_verify():
+    ensure_staff_auth_tables()
+    email = request.args.get("email", "").strip().lower() or request.form.get("email", "").strip().lower()
+    error = ""
+    message = request.args.get("msg", "")
+    if request.method == "POST":
+        otp = request.form.get("otp", "").strip()
+        ok, msg = verify_otp_flow("staff_register", email, otp)
+        if not ok:
+            error = msg
+        else:
+            flow = session.get("otp_flow") or {}
+            extra = flow.get("extra") or {}
+            db = get_db()
+            cur = db.cursor()
+            cur.execute("""
+                INSERT INTO staff_accounts (employee_id, employee_name, department, designation, email, password_hash, is_verified)
+                VALUES (%s,%s,%s,%s,%s,%s,1)
+            """, (
+                extra.get("employee_id"),
+                extra.get("employee_name"),
+                extra.get("department"),
+                extra.get("designation"),
+                extra.get("email"),
+                extra.get("password_hash"),
+            ))
+            db.commit()
+            cur.close()
+            db.close()
+            session.pop("otp_flow", None)
+            return redirect(url_for("login_staff_admin"))
+
+    return render_template("staff_register_verify.html", email=email, error=error, message=message)
+
+
+@app.route("/forgot-password/student", methods=["GET", "POST"])
+def forgot_password_student():
+    error = ""
+    message = ""
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        db = get_db()
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            SELECT spd.admission_id
+            FROM student_personal_details spd
+            JOIN students s ON s.admission_id = spd.admission_id
+            WHERE LOWER(spd.student_email)=LOWER(%s)
+            LIMIT 1
+        """, (email,))
+        row = cur.fetchone()
+        cur.close()
+        db.close()
+        if not row:
+            error = "Student email not found."
+        else:
+            otp = start_otp_flow("student_forgot_password", email, {"admission_id": row["admission_id"]})
+            sent, msg = send_otp_email(email, "SVP Student Password Reset OTP", otp)
+            if not sent:
+                error = msg
+            else:
+                return redirect(url_for("forgot_password_student_verify", email=email))
+
+    return render_template("forgot_password_student.html", error=error, message=message)
+
+
+@app.route("/forgot-password/student/verify", methods=["GET", "POST"])
+def forgot_password_student_verify():
+    email = request.args.get("email", "").strip().lower() or request.form.get("email", "").strip().lower()
+    error = ""
+    if request.method == "POST":
+        otp = request.form.get("otp", "").strip()
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        if len(new_password) < 6:
+            error = "Password must be at least 6 characters."
+        elif new_password != confirm_password:
+            error = "Passwords do not match."
+        else:
+            ok, msg = verify_otp_flow("student_forgot_password", email, otp)
+            if not ok:
+                error = msg
+            else:
+                flow = session.get("otp_flow") or {}
+                admission_id = (flow.get("extra") or {}).get("admission_id")
+                db = get_db()
+                cur = db.cursor()
+                cur.execute(
+                    "UPDATE students SET password_hash=%s WHERE admission_id=%s",
+                    (hashlib.sha256(new_password.encode()).hexdigest(), admission_id)
+                )
+                db.commit()
+                cur.close()
+                db.close()
+                session.pop("otp_flow", None)
+                return redirect(url_for("login_student"))
+
+    return render_template("forgot_password_verify.html", email=email, error=error, role_name="Student")
+
+
+@app.route("/forgot-password/staff", methods=["GET", "POST"])
+def forgot_password_staff():
+    ensure_staff_auth_tables()
+    error = ""
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        db = get_db()
+        cur = db.cursor(dictionary=True)
+        cur.execute("SELECT id FROM staff_accounts WHERE LOWER(email)=LOWER(%s)", (email,))
+        staff = cur.fetchone()
+        cur.close()
+        db.close()
+        if not staff:
+            error = "Staff email not found."
+        else:
+            otp = start_otp_flow("staff_forgot_password", email, {"staff_id": staff["id"]})
+            sent, msg = send_otp_email(email, "SVP Staff Password Reset OTP", otp)
+            if not sent:
+                error = msg
+            else:
+                return redirect(url_for("forgot_password_staff_verify", email=email))
+
+    return render_template("forgot_password_staff.html", error=error)
+
+
+@app.route("/forgot-password/staff/verify", methods=["GET", "POST"])
+def forgot_password_staff_verify():
+    ensure_staff_auth_tables()
+    email = request.args.get("email", "").strip().lower() or request.form.get("email", "").strip().lower()
+    error = ""
+    if request.method == "POST":
+        otp = request.form.get("otp", "").strip()
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        if len(new_password) < 6:
+            error = "Password must be at least 6 characters."
+        elif new_password != confirm_password:
+            error = "Passwords do not match."
+        else:
+            ok, msg = verify_otp_flow("staff_forgot_password", email, otp)
+            if not ok:
+                error = msg
+            else:
+                flow = session.get("otp_flow") or {}
+                staff_id = (flow.get("extra") or {}).get("staff_id")
+                db = get_db()
+                cur = db.cursor()
+                cur.execute(
+                    "UPDATE staff_accounts SET password_hash=%s WHERE id=%s",
+                    (hashlib.sha256(new_password.encode()).hexdigest(), staff_id)
+                )
+                db.commit()
+                cur.close()
+                db.close()
+                session.pop("otp_flow", None)
+                return redirect(url_for("login_staff_admin"))
+
+    return render_template("forgot_password_verify.html", email=email, error=error, role_name="Staff")
+
+
+# =========================
+# LOGOUT
+# =========================
+>>>>>>> 65ee43f (Updated college website features and admin modules)
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect("/")
+    return redirect("/login")
 
 
 # =========================
@@ -97,9 +854,413 @@ def logout():
 # =========================
 @app.route("/admin")
 def admin_dashboard():
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
-    return render_template("admin_dashboard.html")
+    is_management_staff = scope["is_staff"] and "management" in (scope.get("department") or "").strip().lower()
+    is_hod_staff = scope["is_staff"] and (
+        "hod" in (scope.get("designation") or "").strip().lower()
+        or "head of department" in (scope.get("designation") or "").strip().lower()
+    )
+    return render_template(
+        "admin_dashboard.html",
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"],
+        is_management_staff=is_management_staff,
+        is_hod_staff=is_hod_staff,
+        can_manage_fees=can_edit_fees(scope)
+    )
+
+
+@app.route("/admin/student-details")
+def admin_student_details():
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+
+    from datetime import date
+
+    ensure_students_college_reg_no_column()
+
+    q = request.args.get("q", "").strip()
+    status = request.args.get("status", "ACTIVE").strip()
+    branch = request.args.get("branch", "").strip()
+    if scope["is_staff"]:
+        branch = scope["department"]
+    current_year = date.today().year
+    academic_year = f"{current_year}-{str((current_year + 1) % 100).zfill(2)}"
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    query = """
+        SELECT
+            s.admission_id,
+            s.student_name,
+            s.branch,
+            s.mobile,
+            COALESCE(s.college_reg_no, '') AS college_reg_no,
+            COALESCE(spd.dob, '-') AS dob,
+            COALESCE(spd.gender, '-') AS gender,
+            COALESCE(spd.caste_category, '-') AS caste_category,
+            COALESCE(spd.alloted_category, '-') AS alloted_category,
+            COALESCE(sd.student_photo, spd.photo_file, '') AS photo_file
+        FROM students s
+        LEFT JOIN student_personal_details spd
+            ON spd.admission_id = s.admission_id
+        LEFT JOIN student_documents sd
+            ON sd.admission_id = s.admission_id
+        WHERE 1=1
+    """
+    params = []
+
+    if q:
+        query += """
+            AND (
+                s.student_name LIKE %s
+                OR s.admission_id LIKE %s
+                OR s.college_reg_no LIKE %s
+                OR spd.register_number LIKE %s
+            )
+        """
+        params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
+
+    if status:
+        query += " AND s.status=%s"
+        params.append(status)
+
+    if branch:
+        query += " AND s.branch=%s"
+        params.append(branch)
+
+    query += " ORDER BY s.student_name ASC"
+
+    cur.execute(query, tuple(params))
+    students = cur.fetchall()
+
+    cur.execute("SELECT DISTINCT branch FROM students ORDER BY branch ASC")
+    branch_rows = cur.fetchall()
+    branches = [row["branch"] for row in branch_rows if row.get("branch")]
+
+    cur.close()
+    db.close()
+
+    return render_template(
+        "admin_student_details.html",
+        students=students,
+        branches=branches,
+        academic_year=academic_year,
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"],
+        filters={
+            "q": q,
+            "status": status,
+            "branch": branch
+        }
+    )
+
+
+@app.route("/admin/student-details/edit/<admission_id>", methods=["GET", "POST"])
+def edit_student_details(admission_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can edit only your department students.", 403
+
+    ensure_students_college_reg_no_column()
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT
+            s.admission_id,
+            s.student_name,
+            s.branch,
+            s.mobile,
+            COALESCE(s.college_reg_no, '') AS college_reg_no,
+            COALESCE(spd.gender, '') AS gender,
+            COALESCE(spd.caste_category, '') AS caste_category,
+            COALESCE(spd.alloted_category, '') AS alloted_category,
+            COALESCE(spd.register_number, '') AS register_number
+        FROM students s
+        LEFT JOIN student_personal_details spd
+            ON spd.admission_id = s.admission_id
+        WHERE s.admission_id=%s
+    """, (admission_id,))
+    student = cur.fetchone()
+
+    if not student:
+        cur.close()
+        db.close()
+        return "Student not found", 404
+
+    if request.method == "POST":
+        student_name = request.form.get("student_name", "").strip()
+        branch = request.form.get("branch", "").strip()
+        mobile = request.form.get("mobile", "").strip()
+        college_reg_no = request.form.get("college_reg_no", "").strip()
+        gender = request.form.get("gender", "").strip()
+        caste_category = request.form.get("caste_category", "").strip()
+        alloted_category = request.form.get("alloted_category", "").strip()
+        register_number = request.form.get("register_number", "").strip()
+
+        if not student_name or not branch or not mobile:
+            cur.close()
+            db.close()
+            return "Student name, branch, and mobile are required"
+
+        update_cur = db.cursor()
+        update_cur.execute("""
+            UPDATE students
+            SET student_name=%s, branch=%s, mobile=%s, college_reg_no=%s
+            WHERE admission_id=%s
+        """, (student_name, branch, mobile, college_reg_no, admission_id))
+
+        update_cur.execute("""
+            SELECT id FROM student_personal_details WHERE admission_id=%s
+        """, (admission_id,))
+        personal_exists = update_cur.fetchone()
+
+        if personal_exists:
+            update_cur.execute("""
+                UPDATE student_personal_details
+                SET gender=%s,
+                    caste_category=%s,
+                    alloted_category=%s,
+                    register_number=%s
+                WHERE admission_id=%s
+            """, (gender, caste_category, alloted_category, register_number, admission_id))
+        else:
+            update_cur.execute("""
+                INSERT INTO student_personal_details
+                (admission_id, gender, caste_category, alloted_category, register_number)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (admission_id, gender, caste_category, alloted_category, register_number))
+
+        db.commit()
+        update_cur.close()
+        cur.close()
+        db.close()
+        return redirect("/admin/student-details")
+
+    cur.close()
+    db.close()
+    return render_template("admin_edit_student.html", student=student)
+
+
+@app.route("/admin/employees")
+def admin_employees():
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+
+    ensure_employees_table()
+
+    employee_type = request.args.get("employee_type", "").strip()
+    department = request.args.get("department", "").strip()
+    if scope["is_staff"]:
+        department = scope["department"]
+    hod_only = request.args.get("hod", "").strip().lower()
+    sort_by = request.args.get("sort_by", "employee_name").strip()
+    name_query = request.args.get("name", "").strip()
+
+    sort_columns = {
+        "employee_name": "employee_name",
+        "department": "department",
+        "designation": "designation"
+    }
+    sort_column = sort_columns.get(sort_by, "employee_name")
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    query = """
+        SELECT id, employee_name, department, designation, mobile_no, employee_type
+        FROM employee_details
+        WHERE 1=1
+    """
+    params = []
+
+    if employee_type:
+        query += " AND employee_type = %s"
+        params.append(employee_type)
+
+    if department:
+        query += " AND department = %s"
+        params.append(department)
+
+    if name_query:
+        query += " AND LOWER(employee_name) LIKE LOWER(%s)"
+        params.append(f"%{name_query}%")
+
+    if hod_only == "yes":
+        query += " AND (UPPER(designation) LIKE %s OR UPPER(designation) = %s)"
+        params.append("%HOD%")
+        params.append("HEAD OF DEPARTMENT")
+
+    query += f" ORDER BY {sort_column} ASC"
+    cur.execute(query, tuple(params))
+    employees = cur.fetchall()
+
+    cur.execute("SELECT DISTINCT department FROM employee_details ORDER BY department ASC")
+    department_rows = cur.fetchall()
+    departments = [row["department"] for row in department_rows if row.get("department")]
+
+    cur.execute("SELECT DISTINCT employee_name FROM employee_details ORDER BY employee_name ASC")
+    name_rows = cur.fetchall()
+    employee_names = [row["employee_name"] for row in name_rows if row.get("employee_name")]
+
+    cur.close()
+    db.close()
+
+    return render_template(
+        "admin_employees.html",
+        employees=employees,
+        departments=departments,
+        employee_names=employee_names,
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"],
+        filters={
+            "employee_type": employee_type,
+            "department": department,
+            "hod": hod_only,
+            "sort_by": sort_by,
+            "name": name_query
+        }
+    )
+
+
+@app.route("/admin/employees/add", methods=["GET", "POST"])
+def add_employee():
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+
+    ensure_employees_table()
+
+    if request.method == "POST":
+        employee_name = request.form.get("employee_name", "").strip()
+        department = request.form.get("department", "").strip()
+        if scope["is_staff"]:
+            department = scope["department"]
+        designation = request.form.get("designation", "").strip()
+        mobile_no = request.form.get("mobile_no", "").strip()
+
+        if not employee_name or not department or not designation or not mobile_no:
+            return "All fields are required"
+
+        if not mobile_no.isdigit() or len(mobile_no) != 10:
+            return "PLEASE ENTER 10 DIGIT MOBILE NUMBER"
+
+        designation_type_map = {
+            "HEAD OF DEPARTMENT": "TEACHING",
+            "TEACHING STAFF": "TEACHING",
+            "NON TEACHING STAFF": "NON-TEACHING",
+            "HELPER": "HELPER"
+        }
+        employee_type = designation_type_map.get(designation.upper(), "TEACHING")
+
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("""
+            INSERT INTO employee_details
+            (employee_name, department, designation, mobile_no, employee_type)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (employee_name, department, designation, mobile_no, employee_type))
+        db.commit()
+        cur.close()
+        db.close()
+
+        return redirect("/admin/employees")
+
+    return render_template(
+        "add_employee.html",
+        edit_mode=False,
+        employee={},
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"]
+    )
+
+
+@app.route("/admin/employees/edit/<int:employee_id>", methods=["GET", "POST"])
+def edit_employee(employee_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+
+    ensure_employees_table()
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("""
+        SELECT id, employee_name, department, designation, mobile_no
+        FROM employee_details
+        WHERE id=%s
+    """, (employee_id,))
+    employee = cur.fetchone()
+    if scope["is_staff"] and employee and (employee.get("department") or "").strip().lower() != (scope["department"] or "").strip().lower():
+        cur.close()
+        db.close()
+        return "Forbidden: You can edit only your department.", 403
+
+    if not employee:
+        cur.close()
+        db.close()
+        return "Employee not found", 404
+
+    if request.method == "POST":
+        employee_name = request.form.get("employee_name", "").strip()
+        department = request.form.get("department", "").strip()
+        if scope["is_staff"]:
+            department = scope["department"]
+        designation = request.form.get("designation", "").strip()
+        mobile_no = request.form.get("mobile_no", "").strip()
+
+        if not employee_name or not department or not designation or not mobile_no:
+            cur.close()
+            db.close()
+            return "All fields are required"
+
+        if not mobile_no.isdigit() or len(mobile_no) != 10:
+            cur.close()
+            db.close()
+            return "PLEASE ENTER 10 DIGIT MOBILE NUMBER"
+
+        designation_type_map = {
+            "HEAD OF DEPARTMENT": "TEACHING",
+            "TEACHING STAFF": "TEACHING",
+            "NON TEACHING STAFF": "NON-TEACHING",
+            "HELPER": "HELPER"
+        }
+        employee_type = designation_type_map.get(designation.upper(), "TEACHING")
+
+        update_cur = db.cursor()
+        update_cur.execute("""
+            UPDATE employee_details
+            SET employee_name=%s,
+                department=%s,
+                designation=%s,
+                mobile_no=%s,
+                employee_type=%s
+            WHERE id=%s
+        """, (employee_name, department, designation, mobile_no, employee_type, employee_id))
+        db.commit()
+        update_cur.close()
+        cur.close()
+        db.close()
+        return redirect("/admin/employees")
+
+    cur.close()
+    db.close()
+    return render_template(
+        "add_employee.html",
+        edit_mode=True,
+        employee=employee,
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"]
+    )
 
 
 # =========================
@@ -369,6 +1530,25 @@ def admission_step3():
         if admission["qualifying_exam"] not in ["SSLC","CBSE","ICSE", "PUC", "ITI"]:
             return "❌ Invalid Qualifying Exam"
 
+        # ===== FILES (SAVE IF PROVIDED) =====
+        def save_step3_file(file_obj, prefix):
+            if not file_obj or file_obj.filename == "":
+                return None
+            if not allowed_file(file_obj.filename):
+                return "INVALID_FILE"
+            filename = f"{admission['admission_id']}_{prefix}_{secure_filename(file_obj.filename)}"
+            file_obj.save(os.path.join(UPLOAD_FOLDER, filename))
+            return filename
+
+        photo_name = save_step3_file(request.files.get("student_photo"), "photo")
+        aadhaar_file_name = save_step3_file(request.files.get("aadhaar_file"), "aadhaar")
+        caste_file_name = save_step3_file(request.files.get("caste_certificate_file"), "caste")
+        income_file_name = save_step3_file(request.files.get("income_certificate_file"), "income")
+        marks_file_name = save_step3_file(request.files.get("marks_card_file"), "marks")
+
+        if "INVALID_FILE" in [photo_name, aadhaar_file_name, caste_file_name, income_file_name, marks_file_name]:
+            return "❌ Invalid file type. Allowed: PDF, JPG, JPEG, PNG"
+
         
 
         # ================= DATABASE =================
@@ -422,17 +1602,53 @@ def admission_step3():
             admission["permanent_address"]
         ))
 
-        # ===== STEP-3 DETAILS (AADHAAR / RD NUMBERS) =====
-        cur.execute("""
-            INSERT INTO student_documents
-            (admission_id, aadhaar_number, caste_rd_number, income_rd_number)
-            VALUES (%s,%s,%s,%s)
-        """, (
-            admission["admission_id"],
-            aadhaar_number,
-            caste_rd_number,
-            income_rd_number
-        ))
+        # ===== STEP-3 DETAILS (AADHAAR / RD NUMBERS + FILES) =====
+        cur.execute(
+            "SELECT id FROM student_documents WHERE admission_id=%s",
+            (admission["admission_id"],)
+        )
+        existing_doc = cur.fetchone()
+
+        if existing_doc:
+            cur.execute("""
+                UPDATE student_documents
+                SET aadhaar_number=%s,
+                    caste_rd_number=%s,
+                    income_rd_number=%s,
+                    student_photo=COALESCE(%s, student_photo),
+                    aadhaar_file=COALESCE(%s, aadhaar_file),
+                    caste_file=COALESCE(%s, caste_file),
+                    income_file=COALESCE(%s, income_file),
+                    marks_card_file=COALESCE(%s, marks_card_file)
+                WHERE admission_id=%s
+            """, (
+                aadhaar_number,
+                caste_rd_number,
+                income_rd_number,
+                photo_name,
+                aadhaar_file_name,
+                caste_file_name,
+                income_file_name,
+                marks_file_name,
+                admission["admission_id"]
+            ))
+        else:
+            cur.execute("""
+                INSERT INTO student_documents
+                (admission_id, aadhaar_number, caste_rd_number, income_rd_number,
+                 student_photo, aadhaar_file, caste_file, income_file, marks_card_file)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                admission["admission_id"],
+                aadhaar_number,
+                caste_rd_number,
+                income_rd_number,
+                photo_name,
+                aadhaar_file_name,
+                caste_file_name,
+                income_file_name,
+                marks_file_name
+            ))
 
         db.commit()
         cur.close()
@@ -459,28 +1675,85 @@ def admission_step3():
 # =========================
 @app.route("/admin/applications")
 def admin_applications():
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
 
-    q = request.args.get("q", "")
+    ensure_students_status_supports_rejected()
+    ensure_students_rejection_reason_column()
+
+    q = request.args.get("q", "").strip()
     status = request.args.get("status", "INACTIVE")
+    branch = request.args.get("branch", "").strip()
+    if scope["is_staff"]:
+        branch = scope["department"]
 
     db = get_db()
     cur = db.cursor(dictionary=True)
 
-    cur.execute("""
-        SELECT * FROM students
-        WHERE status=%s
-        AND (student_name LIKE %s OR admission_id LIKE %s)
-    """, (status, f"%{q}%", f"%{q}%"))
+    query = """
+        SELECT
+            s.admission_id,
+            s.student_name,
+            s.branch,
+            s.status,
+            COALESCE(spd.student_mobile, s.mobile) AS mobile,
+            COALESCE(spd.dob, '-') AS dob,
+            COALESCE(spd.gender, '-') AS gender,
+            COALESCE(spd.caste_category, '-') AS caste_category,
+            COALESCE(spd.alloted_category, '-') AS alloted_category,
+            COALESCE(spd.register_number, '-') AS register_number,
+            COALESCE(s.rejection_reason, '-') AS rejection_reason
+        FROM students s
+        LEFT JOIN student_personal_details spd
+            ON spd.admission_id = s.admission_id
+        WHERE 1=1
+    """
+    params = []
+
+    if status and status != "ALL":
+        query += " AND s.status=%s"
+        params.append(status)
+
+    if branch and branch != "ALL":
+        query += " AND s.branch=%s"
+        params.append(branch)
+
+    if q:
+        query += """
+            AND (
+                s.student_name LIKE %s
+                OR s.admission_id LIKE %s
+                OR s.college_reg_no LIKE %s
+                OR spd.register_number LIKE %s
+            )
+        """
+        params.extend([f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
+
+    query += """
+        ORDER BY s.student_name ASC
+    """
+
+    cur.execute(query, tuple(params))
 
     students = cur.fetchall()
+
+    cur.execute("SELECT DISTINCT branch FROM students ORDER BY branch ASC")
+    branch_rows = cur.fetchall()
+    branches = [row["branch"] for row in branch_rows if row.get("branch")]
+
+    cur.close()
+    db.close()
 
     return render_template(
         "admin_applications.html",
         students=students,
+        branches=branches,
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"],
         q=q,
-        status=status
+        status=status,
+        branch=branch
     )
 
 # =========================
@@ -489,10 +1762,26 @@ def admin_applications():
 @app.route("/approve/<admission_id>")
 
 def approve_student(admission_id):
+<<<<<<< HEAD
     if "admin" not in session:
      return redirect("/login")
 
     
+=======
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can approve only your department students.", 403
+
+    ensure_students_status_supports_rejected()
+    ensure_students_rejection_reason_column()
+
+    next_status = request.args.get("status", "INACTIVE")
+    q = request.args.get("q", "")
+    branch = request.args.get("branch", "")
+
+>>>>>>> 65ee43f (Updated college website features and admin modules)
     db = get_db()
     cur = db.cursor()
 
@@ -505,14 +1794,26 @@ def approve_student(admission_id):
     db.commit()
     cur.close()
     db.close()   
-    return redirect("/admin/applications")
+    return redirect(url_for("admin_applications", status=next_status, q=q, branch=branch))
 
 @app.route("/reject/<admission_id>", methods=["POST"])
 def reject_student(admission_id):
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can reject only your department students.", 403
 
-    reason = request.form["reason"]
+    ensure_students_status_supports_rejected()
+    ensure_students_rejection_reason_column()
+
+    reason = request.form.get("reason", "").strip()
+    next_status = request.form.get("status", "REJECTED")
+    q = request.form.get("q", "")
+    branch = request.form.get("branch", "")
+
+    if not reason:
+        return "Reason is required"
 
     db = get_db()
     cur = db.cursor()
@@ -527,7 +1828,7 @@ def reject_student(admission_id):
     cur.close()
     db.close()   
 
-    return redirect("/admin/applications")
+    return redirect(url_for("admin_applications", status=next_status, q=q, branch=branch))
 
 
 # =========================
@@ -535,13 +1836,16 @@ def reject_student(admission_id):
 # =========================
 @app.route("/add-student", methods=["GET", "POST"])
 def add_student():
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
 
     if request.method == "POST":
         admission_id = request.form["admission_id"]
         name = request.form["student_name"]
         branch = request.form["branch"]
+        if scope["is_staff"]:
+            branch = scope["department"]
         year_sem = request.form["year_sem"]
         mobile = request.form["mobile"]
         password = password = generate_password_hash(request.form["password"])
@@ -558,7 +1862,7 @@ def add_student():
 
         return "✅ Student Added Successfully"
 
-    return render_template("add_student.html")
+    return render_template("add_student.html", is_staff=scope["is_staff"], staff_department=scope["department"])
 
 
 # =========================
@@ -566,12 +1870,16 @@ def add_student():
 # =========================
 @app.route("/add-education", methods=["GET", "POST"])
 def add_education():
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
 
     if request.method == "POST":
+        admission_id = request.form["admission_id"]
+        if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+            return "Forbidden: You can edit only your department students.", 403
         data = (
-            request.form["admission_id"],
+            admission_id,
             request.form["qualifying_exam"],
             request.form["register_number"],
             request.form["year_of_passing"],
@@ -601,48 +1909,540 @@ def add_education():
 
 
 # =========================
-# ADMIN: SET FEES
+# ADMIN: FEES MANAGEMENT
 # =========================
+def fetch_fee_overview_rows(q="", branch="", sem="", payment_state="", sort_by="name", forced_department=""):
+    ensure_students_college_reg_no_column()
+    ensure_students_admission_year_column()
+    ensure_fee_module_tables()
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    query = """
+        SELECT
+            s.admission_id,
+            s.student_name,
+            s.branch,
+            s.mobile,
+            s.year_sem,
+            s.admission_year,
+            COALESCE(s.college_reg_no, '') AS college_reg_no
+        FROM students s
+        WHERE 1=1
+    """
+    params = []
+
+    if q:
+        query += """
+            AND (
+                s.student_name LIKE %s
+                OR s.admission_id LIKE %s
+                OR s.college_reg_no LIKE %s
+            )
+        """
+        like_q = f"%{q}%"
+        params.extend([like_q, like_q, like_q])
+
+    if forced_department:
+        query += " AND s.branch=%s"
+        params.append(forced_department)
+    elif branch:
+        query += " AND s.branch=%s"
+        params.append(branch)
+
+    cur.execute(query, tuple(params))
+    raw_rows = cur.fetchall()
+
+    cur.execute("SELECT DISTINCT branch FROM students ORDER BY branch ASC")
+    branches = [row["branch"] for row in cur.fetchall() if row.get("branch")]
+
+    ay = current_academic_year()
+    cur.execute("""
+        SELECT
+            branch,
+            semester_no,
+            admission_fee_due,
+            tuition_fee_due,
+            management_fee_due,
+            exam_fee_due
+        FROM fee_structure_master
+        WHERE academic_year=%s
+    """, (ay,))
+    structure_rows = cur.fetchall()
+    fee_map = {}
+    for fr in structure_rows:
+        fee_map[(fr["branch"], int(fr["semester_no"]))] = {
+            "ADMISSION": float(fr.get("admission_fee_due") or 0),
+            "TUITION": float(fr.get("tuition_fee_due") or 0),
+            "MANAGEMENT": float(fr.get("management_fee_due") or 0),
+            "EXAM": float(fr.get("exam_fee_due") or 0),
+        }
+
+    cur.execute("""
+        SELECT
+            admission_id,
+            fee_type,
+            semester_no,
+            COALESCE(SUM(amount), 0) AS total_amount
+        FROM fee_payments
+        WHERE academic_year=%s
+        GROUP BY admission_id, fee_type, semester_no
+    """, (ay,))
+    payment_rows = cur.fetchall()
+    payment_map = {}
+    for pr in payment_rows:
+        sem_no = int(pr["semester_no"]) if pr.get("semester_no") else None
+        if sem_no is None:
+            continue
+        payment_map[(pr["admission_id"], sem_no, pr["fee_type"])] = float(pr.get("total_amount") or 0)
+
+    cur.close()
+    db.close()
+
+    rows = []
+    for row in raw_rows:
+        current_sem = infer_current_sem(row.get("admission_year"), row.get("year_sem"))
+        due = fee_map.get((row.get("branch"), current_sem), {})
+        paid = {
+            "ADMISSION": payment_map.get((row.get("admission_id"), current_sem, "ADMISSION"), 0),
+            "TUITION": payment_map.get((row.get("admission_id"), current_sem, "TUITION"), 0),
+            "MANAGEMENT": payment_map.get((row.get("admission_id"), current_sem, "MANAGEMENT"), 0),
+            "EXAM": payment_map.get((row.get("admission_id"), current_sem, "EXAM"), 0),
+        }
+        rows.append(fee_summary_from_row(row, due=due, paid=paid))
+
+    if sem:
+        try:
+            sem_value = int(sem)
+            rows = [row for row in rows if row["current_sem"] == sem_value]
+        except ValueError:
+            pass
+
+    if payment_state:
+        state = payment_state.strip().upper()
+        rows = [row for row in rows if row["payment_state"] == state]
+
+    sort_key_map = {
+        "name": lambda row: (row.get("student_name") or "").lower(),
+        "admission_id": lambda row: (row.get("admission_id") or "").lower(),
+        "branch": lambda row: (row.get("branch") or "").lower(),
+        "sem_asc": lambda row: row.get("current_sem") or 0,
+        "sem_desc": lambda row: -(row.get("current_sem") or 0),
+        "balance_desc": lambda row: -(row.get("balance") or 0),
+        "balance_asc": lambda row: row.get("balance") or 0,
+    }
+    rows.sort(key=sort_key_map.get(sort_by, sort_key_map["name"]))
+    return rows, branches
+
+
 @app.route("/admin/fees", methods=["GET", "POST"])
 def admin_fees():
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
+    can_manage = can_edit_fees(scope)
+
+    ensure_students_college_reg_no_column()
+    ensure_students_admission_year_column()
+    ensure_fee_module_tables()
+
+    msg = request.args.get("msg", "")
+    ay = current_academic_year()
 
     if request.method == "POST":
-        admission_id = request.form["admission_id"]
-        admission_fee = request.form["admission_fee"]
-        tuition_fee = request.form["tuition_fee"]
-        exam_fee = request.form["exam_fee"]
-        status = request.form["payment_status"]
+        if not can_manage:
+            return "Forbidden: Only Admin, HOD, or Management staff can add/edit fee details.", 403
+        fee_branch = request.form.get("fee_branch", "").strip()
+        if scope["is_staff"] and "management" not in (scope.get("department") or "").strip().lower():
+            fee_branch = scope["department"]
+        semester_no = parse_int_prefix(request.form.get("semester_no", "").strip())
+        academic_year = request.form.get("academic_year", "").strip() or ay
+        admission_fee_due = float(request.form.get("admission_fee_due") or 0)
+        tuition_fee_due = float(request.form.get("tuition_fee_due") or 0)
+        management_fee_due = float(request.form.get("management_fee_due") or 0)
+        exam_fee_due = float(request.form.get("exam_fee_due") or 0)
+
+        if not fee_branch:
+            return redirect(url_for("admin_fees", msg="Branch is required for fee setup"))
+        if semester_no is None or semester_no < 1 or semester_no > 6:
+            return redirect(url_for("admin_fees", msg="Semester must be between 1 and 6"))
 
         db = get_db()
-        cur = db.cursor()
-
-        cur.execute(
-            "SELECT * FROM fees WHERE admission_id=%s",
-            (admission_id,)
-        )
-
-        if cur.fetchone():
-            cur.execute("""
-                UPDATE fees
-                SET admission_fee=%s,
-                    tuition_fee=%s,
-                    exam_fee=%s,
-                    payment_status=%s
-                WHERE admission_id=%s
-            """, (admission_fee, tuition_fee, exam_fee, status, admission_id))
-        else:
-            cur.execute("""
-                INSERT INTO fees
-                (admission_id, admission_fee, tuition_fee, exam_fee, payment_status)
-                VALUES (%s,%s,%s,%s,%s)
-            """, (admission_id, admission_fee, tuition_fee, exam_fee, status))
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            INSERT INTO fee_structure_master (
+                branch,
+                semester_no,
+                academic_year,
+                admission_fee_due,
+                tuition_fee_due,
+                management_fee_due,
+                exam_fee_due
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE
+                admission_fee_due=VALUES(admission_fee_due),
+                tuition_fee_due=VALUES(tuition_fee_due),
+                management_fee_due=VALUES(management_fee_due),
+                exam_fee_due=VALUES(exam_fee_due)
+        """, (
+            fee_branch,
+            semester_no,
+            academic_year,
+            admission_fee_due,
+            tuition_fee_due,
+            management_fee_due,
+            exam_fee_due
+        ))
 
         db.commit()
-        return "✅ Fees Updated Successfully"
+        cur.close()
+        db.close()
+        return redirect(url_for("admin_fees", msg="Fee structure saved for branch/semester"))
 
-    return render_template("admin_fees.html")
+    q = request.args.get("q", "").strip()
+    branch = request.args.get("branch", "").strip()
+    if scope["is_staff"] and "management" not in (scope.get("department") or "").strip().lower():
+        branch = scope["department"]
+    sem = request.args.get("sem", "").strip()
+    payment_state = request.args.get("payment_state", "").strip().upper()
+    sort_by = request.args.get("sort_by", "name").strip()
+
+    students, branches = fetch_fee_overview_rows(
+        q=q,
+        branch=branch,
+        sem=sem,
+        payment_state=payment_state,
+        sort_by=sort_by,
+        forced_department=scope["department"] if (scope["is_staff"] and "management" not in (scope.get("department") or "").strip().lower()) else ""
+    )
+
+    return render_template(
+        "admin_fees.html",
+        students=students,
+        branches=branches,
+        filters={
+            "q": q,
+            "branch": branch,
+            "sem": sem,
+            "payment_state": payment_state,
+            "sort_by": sort_by
+        },
+        default_academic_year=ay,
+        is_staff=scope["is_staff"],
+        staff_department=scope["department"],
+        can_manage_fees=can_manage,
+        msg=msg
+    )
+
+
+@app.route("/admin/fees/export")
+def admin_fees_export():
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+
+    q = request.args.get("q", "").strip()
+    branch = request.args.get("branch", "").strip()
+    if scope["is_staff"] and "management" not in (scope.get("department") or "").strip().lower():
+        branch = scope["department"]
+    sem = request.args.get("sem", "").strip()
+    payment_state = request.args.get("payment_state", "").strip().upper()
+    sort_by = request.args.get("sort_by", "name").strip()
+
+    rows, _ = fetch_fee_overview_rows(
+        q=q,
+        branch=branch,
+        sem=sem,
+        payment_state=payment_state,
+        sort_by=sort_by,
+        forced_department=scope["department"] if (scope["is_staff"] and "management" not in (scope.get("department") or "").strip().lower()) else ""
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Admission ID",
+        "Reg No",
+        "Student Name",
+        "Branch",
+        "Current Sem",
+        "Academic Year",
+        "Admission Due",
+        "Tuition Due",
+        "Management Due",
+        "Exam Due",
+        "Total Due",
+        "Admission Paid",
+        "Tuition Paid",
+        "Management Paid",
+        "Exam Paid",
+        "Total Paid",
+        "Balance",
+        "Payment State"
+    ])
+
+    for row in rows:
+        writer.writerow([
+            row.get("admission_id", ""),
+            row.get("college_reg_no", ""),
+            row.get("student_name", ""),
+            row.get("branch", ""),
+            row.get("current_sem", ""),
+            row.get("academic_year", ""),
+            row.get("admission_due_total", 0),
+            row.get("tuition_due_total", 0),
+            row.get("management_due_total", 0),
+            row.get("exam_due_total", 0),
+            row.get("total_due", 0),
+            row.get("admission_paid", 0),
+            row.get("tuition_paid", 0),
+            row.get("management_paid", 0),
+            row.get("exam_paid", 0),
+            row.get("total_paid", 0),
+            row.get("balance", 0),
+            row.get("payment_state", ""),
+        ])
+
+    csv_bytes = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+    csv_bytes.seek(0)
+    filename = f"fees_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return send_file(
+        csv_bytes,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+@app.route("/admin/fees/student/<admission_id>")
+def admin_fees_student_history(admission_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can view only your department students.", 403
+
+    ensure_students_college_reg_no_column()
+    ensure_students_admission_year_column()
+    ensure_fee_module_tables()
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("""
+        SELECT
+            s.admission_id,
+            s.student_name,
+            s.branch,
+            s.mobile,
+            s.year_sem,
+            s.admission_year,
+            COALESCE(s.college_reg_no, '') AS college_reg_no
+        FROM students s
+        WHERE s.admission_id=%s
+    """, (admission_id,))
+    student = cur.fetchone()
+
+    if not student:
+        cur.close()
+        db.close()
+        return "Student not found", 404
+
+    current_sem = infer_current_sem(student.get("admission_year"), student.get("year_sem"))
+    ay = current_academic_year()
+    cur.execute("""
+        SELECT
+            admission_fee_due,
+            tuition_fee_due,
+            management_fee_due,
+            exam_fee_due
+        FROM fee_structure_master
+        WHERE branch=%s AND semester_no=%s AND academic_year=%s
+    """, (student.get("branch"), current_sem, ay))
+    structure = cur.fetchone() or {}
+
+    due = {
+        "ADMISSION": float(structure.get("admission_fee_due") or 0),
+        "TUITION": float(structure.get("tuition_fee_due") or 0),
+        "MANAGEMENT": float(structure.get("management_fee_due") or 0),
+        "EXAM": float(structure.get("exam_fee_due") or 0),
+    }
+
+    cur.execute("""
+        SELECT
+            fee_type,
+            COALESCE(SUM(amount), 0) AS total_amount
+        FROM fee_payments
+        WHERE admission_id=%s AND academic_year=%s AND semester_no=%s
+        GROUP BY fee_type
+    """, (admission_id, ay, current_sem))
+    paid_rows = cur.fetchall()
+    paid = {"ADMISSION": 0, "TUITION": 0, "MANAGEMENT": 0, "EXAM": 0}
+    for pr in paid_rows:
+        paid[pr["fee_type"]] = float(pr.get("total_amount") or 0)
+
+    summary = fee_summary_from_row(student, due=due, paid=paid)
+
+    cur.execute("""
+        SELECT
+            id,
+            admission_id,
+            fee_type,
+            academic_year,
+            semester_no,
+            amount,
+            payment_date,
+            receipt_no,
+            remarks
+        FROM fee_payments
+        WHERE admission_id=%s
+        ORDER BY payment_date DESC, id DESC
+    """, (admission_id,))
+    payments = cur.fetchall()
+
+    cur.close()
+    db.close()
+
+    return render_template(
+        "admin_fee_history.html",
+        student=summary,
+        payments=payments,
+        default_academic_year=ay,
+        current_sem=current_sem,
+        today_iso=datetime.today().strftime("%Y-%m-%d"),
+        can_manage_fees=can_edit_fees(scope),
+        msg=request.args.get("msg", "")
+    )
+
+
+@app.route("/admin/fees/student/<admission_id>/add-payment", methods=["POST"])
+def admin_fees_add_payment(admission_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+    if not can_edit_fees(scope):
+        return "Forbidden: Only Admin, HOD, or Management staff can add/edit fee details.", 403
+    if scope["is_staff"] and "management" not in (scope.get("department") or "").strip().lower() and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can add payment only for your department students.", 403
+
+    ensure_fee_module_tables()
+
+    fee_type = request.form.get("fee_type", "").strip().upper()
+    if fee_type not in {"ADMISSION", "TUITION", "MANAGEMENT", "EXAM"}:
+        return redirect(url_for("admin_fees_student_history", admission_id=admission_id, msg="Invalid fee type"))
+
+    amount = float(request.form.get("amount") or 0)
+    if amount <= 0:
+        return redirect(url_for("admin_fees_student_history", admission_id=admission_id, msg="Amount must be greater than 0"))
+
+    academic_year = request.form.get("academic_year", "").strip() or current_academic_year()
+    semester_raw = request.form.get("semester_no", "").strip()
+    semester_no = parse_int_prefix(semester_raw)
+    if semester_no is None:
+        cur_date = datetime.today().date()
+        db_tmp = get_db()
+        cur_tmp = db_tmp.cursor(dictionary=True)
+        cur_tmp.execute("SELECT admission_year, year_sem FROM students WHERE admission_id=%s", (admission_id,))
+        sem_src = cur_tmp.fetchone() or {}
+        cur_tmp.close()
+        db_tmp.close()
+        semester_no = infer_current_sem(sem_src.get("admission_year"), sem_src.get("year_sem"), today=cur_date)
+    semester_no = min(max(semester_no, 1), 6)
+
+    payment_date = request.form.get("payment_date", "").strip() or datetime.today().strftime("%Y-%m-%d")
+    remarks = request.form.get("remarks", "").strip()
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT admission_id FROM students WHERE admission_id=%s", (admission_id,))
+    student = cur.fetchone()
+    if not student:
+        cur.close()
+        db.close()
+        return redirect(url_for("admin_fees", msg="Student not found"))
+
+    receipt_no = f"SVP-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(100, 999)}"
+    cur.execute("""
+        INSERT INTO fee_payments (
+            admission_id,
+            fee_type,
+            academic_year,
+            semester_no,
+            amount,
+            payment_date,
+            receipt_no,
+            remarks
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (
+        admission_id,
+        fee_type,
+        academic_year,
+        semester_no,
+        amount,
+        payment_date,
+        receipt_no,
+        remarks
+    ))
+    db.commit()
+    cur.close()
+    db.close()
+    return redirect(url_for("admin_fees_student_history", admission_id=admission_id, msg="Payment recorded successfully"))
+
+
+@app.route("/admin/fees/payment/<int:payment_id>/receipt")
+def admin_fees_payment_receipt(payment_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+
+    ensure_fee_module_tables()
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("""
+        SELECT
+            fp.*,
+            s.student_name,
+            s.branch
+        FROM fee_payments fp
+        JOIN students s ON s.admission_id = fp.admission_id
+        WHERE fp.id=%s
+    """, (payment_id,))
+    payment = cur.fetchone()
+    cur.close()
+    db.close()
+
+    if not payment:
+        return "Payment not found", 404
+    if scope["is_staff"] and (payment.get("branch") or "").strip().lower() != (scope["department"] or "").strip().lower():
+        return "Forbidden: You can access only your department receipts.", 403
+
+    receipt_path = generate_fee_receipt(
+        {
+            "admission_id": payment["admission_id"],
+            "student_name": payment["student_name"],
+            "branch": payment["branch"],
+        },
+        {
+            "admission_fee": payment["amount"] if payment["fee_type"] == "ADMISSION" else 0,
+            "tuition_fee": payment["amount"] if payment["fee_type"] == "TUITION" else 0,
+            "management_fee": payment["amount"] if payment["fee_type"] == "MANAGEMENT" else 0,
+            "exam_fee": payment["amount"] if payment["fee_type"] == "EXAM" else 0,
+            "payment_type": payment["fee_type"],
+            "payment_status": payment["fee_type"],
+            "receipt_no": payment["receipt_no"],
+            "payment_date": payment["payment_date"],
+            "academic_year": payment.get("academic_year"),
+            "semester_no": payment.get("semester_no"),
+        }
+    )
+    return send_file(
+        receipt_path,
+        as_attachment=True,
+        download_name=f"receipt_{payment['receipt_no']}.pdf"
+    )
 
 
 # =========================
@@ -716,8 +2516,11 @@ def fee_receipt():
     return send_file(pdf, as_attachment=True)
 @app.route("/admin/student/<admission_id>")
 def admin_view_student(admission_id):
-    if "admin" not in session:
+    scope = get_access_scope()
+    if not scope["allowed"]:
         return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can view only your department students.", 403
 
     db = get_db()
     cur = db.cursor(dictionary=True)
@@ -731,11 +2534,100 @@ def admin_view_student(admission_id):
     """, (admission_id,))
     personal = cur.fetchone()
 
+    cur.execute("""
+        SELECT *
+        FROM student_documents
+        WHERE admission_id=%s
+    """, (admission_id,))
+    documents = cur.fetchone()
+
+    cur.close()
+    db.close()
+
+    # Support both new uploads table and legacy personal-details file columns.
+    docs = {
+        "student_photo": (documents or {}).get("student_photo") or (personal or {}).get("photo_file"),
+        "aadhaar_file": (documents or {}).get("aadhaar_file") or (personal or {}).get("aadhaar_file"),
+        "caste_file": (documents or {}).get("caste_file") or (personal or {}).get("caste_certificate_file"),
+        "income_file": (documents or {}).get("income_file") or (personal or {}).get("income_certificate_file"),
+        "marks_card_file": (documents or {}).get("marks_card_file") or (personal or {}).get("marks_card_file"),
+        "aadhaar_number": (documents or {}).get("aadhaar_number") or (personal or {}).get("aadhaar_number"),
+        "caste_rd_number": (documents or {}).get("caste_rd_number") or (personal or {}).get("caste_rd_number"),
+        "income_rd_number": (documents or {}).get("income_rd_number") or (personal or {}).get("income_rd_number"),
+    }
+    docs = infer_uploaded_doc_files(admission_id, docs)
+
     return render_template(
         "admin_view_student.html",
         student=student,
-        personal=personal
+        personal=personal,
+        docs=docs,
+        print_date=datetime.today().strftime("%d-%m-%Y")
     )
+
+
+@app.route("/admin/student/<admission_id>/upload-docs", methods=["POST"])
+def admin_upload_student_docs(admission_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can upload documents only for your department students.", 403
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT admission_id FROM students WHERE admission_id=%s", (admission_id,))
+    if not cur.fetchone():
+        cur.close()
+        db.close()
+        return "Student not found", 404
+
+    def save_admin_doc(file_obj, prefix):
+        if not file_obj or file_obj.filename == "":
+            return None
+        if not allowed_file(file_obj.filename):
+            return "INVALID_FILE"
+        filename = f"{admission_id}_{prefix}_{secure_filename(file_obj.filename)}"
+        file_obj.save(os.path.join(UPLOAD_FOLDER, filename))
+        return filename
+
+    photo_name = save_admin_doc(request.files.get("student_photo"), "photo")
+    aadhaar_name = save_admin_doc(request.files.get("aadhaar_file"), "aadhaar")
+    caste_name = save_admin_doc(request.files.get("caste_file"), "caste")
+    income_name = save_admin_doc(request.files.get("income_file"), "income")
+    marks_name = save_admin_doc(request.files.get("marks_card_file"), "marks")
+
+    if "INVALID_FILE" in [photo_name, aadhaar_name, caste_name, income_name, marks_name]:
+        cur.close()
+        db.close()
+        return "Invalid file type. Allowed: pdf, jpg, jpeg, png", 400
+
+    cur.execute("SELECT id FROM student_documents WHERE admission_id=%s", (admission_id,))
+    existing = cur.fetchone()
+    write_cur = db.cursor()
+
+    if existing:
+        write_cur.execute("""
+            UPDATE student_documents
+            SET student_photo=COALESCE(%s, student_photo),
+                aadhaar_file=COALESCE(%s, aadhaar_file),
+                caste_file=COALESCE(%s, caste_file),
+                income_file=COALESCE(%s, income_file),
+                marks_card_file=COALESCE(%s, marks_card_file)
+            WHERE admission_id=%s
+        """, (photo_name, aadhaar_name, caste_name, income_name, marks_name, admission_id))
+    else:
+        write_cur.execute("""
+            INSERT INTO student_documents
+            (admission_id, student_photo, aadhaar_file, caste_file, income_file, marks_card_file)
+            VALUES (%s,%s,%s,%s,%s,%s)
+        """, (admission_id, photo_name, aadhaar_name, caste_name, income_name, marks_name))
+
+    db.commit()
+    write_cur.close()
+    cur.close()
+    db.close()
+    return redirect(url_for("admin_view_student", admission_id=admission_id))
 
 import zipfile
 from io import BytesIO
@@ -745,6 +2637,11 @@ import zipfile
 from flask import send_file
 @app.route("/admin/download-all/<admission_id>")
 def download_all_docs(admission_id):
+    scope = get_access_scope()
+    if not scope["allowed"]:
+        return redirect("/")
+    if scope["is_staff"] and not student_in_department(admission_id, scope["department"]):
+        return "Forbidden: You can download only your department students documents.", 403
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
@@ -752,13 +2649,15 @@ def download_all_docs(admission_id):
     cursor.execute(
         """
         SELECT 
-            student_photo,
-            aadhaar_file,
-            caste_file,
-            income_file,
-            marks_card_file
-        FROM student_documents
-        WHERE admission_id = %s
+            COALESCE(sd.student_photo, spd.photo_file) AS student_photo,
+            COALESCE(sd.aadhaar_file, spd.aadhaar_file) AS aadhaar_file,
+            COALESCE(sd.caste_file, spd.caste_certificate_file) AS caste_file,
+            COALESCE(sd.income_file, spd.income_certificate_file) AS income_file,
+            COALESCE(sd.marks_card_file, spd.marks_card_file) AS marks_card_file
+        FROM students s
+        LEFT JOIN student_documents sd ON sd.admission_id = s.admission_id
+        LEFT JOIN student_personal_details spd ON spd.admission_id = s.admission_id
+        WHERE s.admission_id = %s
         """,
         (admission_id,)
     )
@@ -767,13 +2666,22 @@ def download_all_docs(admission_id):
     cursor.close()
     conn.close()
 
-    if not data:
+    docs = {
+        "student_photo": (data or {}).get("student_photo"),
+        "aadhaar_file": (data or {}).get("aadhaar_file"),
+        "caste_file": (data or {}).get("caste_file"),
+        "income_file": (data or {}).get("income_file"),
+        "marks_card_file": (data or {}).get("marks_card_file"),
+    }
+    docs = infer_uploaded_doc_files(admission_id, docs)
+
+    if not any(docs.values()):
         return "No documents found for this admission ID", 404
 
     zip_path = f"static/uploads/{admission_id}_documents.zip"
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-        for _, filename in data.items():
+        for filename in docs.values():
             if filename:
                 file_path = os.path.join("static/uploads", filename)
                 if os.path.exists(file_path):
@@ -1021,4 +2929,10 @@ def student_reupload():
 # RUN SERVER
 # =========================
 if __name__ == "__main__":
+<<<<<<< HEAD
     app.run()
+=======
+    app.run(debug=True)
+
+
+>>>>>>> 65ee43f (Updated college website features and admin modules)

@@ -7,6 +7,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 </head>
+<<<<<<< HEAD
+=======
+<script>
+  document.addEventListener("input", function (e) {
+    const isEditable = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+    const isPasswordLike =
+      e.target.type === "password" ||
+      e.target.name === "password" ||
+      e.target.id === "password" ||
+      e.target.classList.contains("preserve-case");
+
+    if (
+      isEditable &&
+      !isPasswordLike
+    ) {
+      e.target.value = e.target.value.toUpperCase();
+    }
+  });
+</script>
+<script>
+document.addEventListener("input", function (e) {
+  if (e.target.matches('input[name="password"]')) {
+    e.stopImmediatePropagation();
+  }
+}, true);
+
+document.addEventListener("keydown", function (e) {
+  if (e.target.matches('input[name="password"]')) {
+    e.stopImmediatePropagation();
+  }
+}, true);
+
+function togglePassword() {
+  const password = document.getElementById("password");
+  const toggleButton = document.getElementById("togglePasswordBtn");
+
+  if (password.type === "password") {
+    password.type = "text";
+    toggleButton.setAttribute("aria-label", "Hide password");
+    toggleButton.setAttribute("title", "Hide password");
+  } else {
+    password.type = "password";
+    toggleButton.setAttribute("aria-label", "Show password");
+    toggleButton.setAttribute("title", "Show password");
+  }
+}
+</script>
+
+
+
+>>>>>>> 65ee43f (Updated college website features and admin modules)
 
 <body>
 
@@ -140,6 +191,7 @@
             <option>Mechanical Engineering</option>
           </select>
 
+<<<<<<< HEAD
           <div style="position: relative;">
             <input type="password" name="password" id="password" placeholder="Create Password" required
               style="padding-right:40px;">
@@ -150,6 +202,14 @@
               👁
             </span>
           </div>
+=======
+          <div class="password-wrapper">
+  <input type="password" name="password" id="password" class="preserve-case" placeholder="Create Password" required autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" autocomplete="new-password">
+    <button type="button" id="togglePasswordBtn" class="toggle-password" onclick="togglePassword()" aria-label="Show password" title="Show password">
+    <span aria-hidden="true">&#128065;</span>
+  </button>
+</div>
+>>>>>>> 65ee43f (Updated college website features and admin modules)
 
         </div>
       </div>
@@ -231,3 +291,4 @@
 </body>
 
 </html>
+
