@@ -1,23 +1,17 @@
-<<<<<<< HEAD
-from flask import Flask, render_template, request, redirect, session, send_file
-from werkzeug.utils import secure_filename
-from werkzeug.security import generate_password_hash, check_password_hash
-import os
-import random
-import zipfile
-import re
-from datetime import date
-=======
 from flask import Flask, render_template, request, redirect, session, send_file, url_for
+import os
 import hashlib
 import random
 import csv
 import io
 import time
 import smtplib
+import zipfile
+import re
 from email.message import EmailMessage
-from datetime import datetime
->>>>>>> 65ee43f (Updated college website features and admin modules)
+from datetime import date, datetime
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from db import get_db
 from pdf_utils import generate_admission_letter, generate_fee_receipt
@@ -51,11 +45,8 @@ load_local_env(os.path.join(BASE_DIR, ".env"))
 
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-<<<<<<< HEAD
-=======
 os.makedirs("static/pdfs", exist_ok=True)
 
->>>>>>> 65ee43f (Updated college website features and admin modules)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
@@ -501,11 +492,6 @@ def login():
 def login_student():
     error = ""
     if request.method == "POST":
-<<<<<<< HEAD
-        role = request.form["role"]
-        username = request.form["username"]
-        password = request.form["password"]
-=======
         username = request.form.get("username", "").strip()
         password_hash = hashlib.sha256(request.form.get("password", "").encode()).hexdigest()
 
@@ -542,49 +528,22 @@ def login_staff_admin():
         login_type = request.form.get("login_type", "staff").strip().lower()
         login_id = request.form.get("login_id", "").strip()
         password_hash = hashlib.sha256(request.form.get("password", "").encode()).hexdigest()
->>>>>>> 65ee43f (Updated college website features and admin modules)
 
         db = get_db()
         cur = db.cursor(dictionary=True)
 
         if login_type == "admin":
             cur.execute(
-<<<<<<< HEAD
-                "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s)",
-                (username,)
-            )
-            admin = cur.fetchone()
-
-            if admin and check_password_hash(admin["password_hash"], password):
-=======
                 "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s) AND password_hash=%s",
                 (login_id, password_hash)
             )
             admin = cur.fetchone()
             if admin:
->>>>>>> 65ee43f (Updated college website features and admin modules)
                 session.clear()
                 session["admin"] = admin["username"]
                 cur.close()
                 db.close()
                 return redirect("/admin")
-<<<<<<< HEAD
-
-            return "❌ Invalid Admin Credentials"
-
-        # ================= STUDENT LOGIN =================
-        elif role == "student":
-            cur.execute(
-                "SELECT * FROM students WHERE LOWER(admission_id)=LOWER(%s)",
-                (username,)
-            )
-            student = cur.fetchone()
-
-            if not student or not check_password_hash(student["password_hash"], password):
-                return "❌ Invalid Student Credentials"
-
-            if student["status"] == "ACTIVE":
-=======
             error = "Invalid admin credentials."
         else:
             cur.execute("""
@@ -593,7 +552,6 @@ def login_staff_admin():
             """, (login_id, password_hash))
             staff = cur.fetchone()
             if staff:
->>>>>>> 65ee43f (Updated college website features and admin modules)
                 session.clear()
                 session["admin"] = staff["email"]
                 session["staff_id"] = staff["id"]
@@ -671,10 +629,6 @@ def staff_register():
                     message = "OTP sent to your Gmail. Verify to complete registration."
                     return redirect(url_for("staff_register_verify", email=email, msg=message))
 
-<<<<<<< HEAD
-    return render_template("login.html")
-
-=======
     return render_template("staff_register.html", error=error, message=message, departments=departments)
 
 
@@ -842,7 +796,6 @@ def forgot_password_staff_verify():
 # =========================
 # LOGOUT
 # =========================
->>>>>>> 65ee43f (Updated college website features and admin modules)
 @app.route("/logout")
 def logout():
     session.clear()
@@ -1762,12 +1715,6 @@ def admin_applications():
 @app.route("/approve/<admission_id>")
 
 def approve_student(admission_id):
-<<<<<<< HEAD
-    if "admin" not in session:
-     return redirect("/login")
-
-    
-=======
     scope = get_access_scope()
     if not scope["allowed"]:
         return redirect("/")
@@ -1781,7 +1728,6 @@ def approve_student(admission_id):
     q = request.args.get("q", "")
     branch = request.args.get("branch", "")
 
->>>>>>> 65ee43f (Updated college website features and admin modules)
     db = get_db()
     cur = db.cursor()
 
@@ -2929,10 +2875,6 @@ def student_reupload():
 # RUN SERVER
 # =========================
 if __name__ == "__main__":
-<<<<<<< HEAD
-    app.run()
-=======
     app.run(debug=True)
 
 
->>>>>>> 65ee43f (Updated college website features and admin modules)
