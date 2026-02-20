@@ -1,18 +1,20 @@
 from flask import Flask, render_template, request, redirect, session, send_file
-import hashlib
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+import os
 import random
+import zipfile
+import re
+from datetime import date
 
 from db import get_db
 from pdf_utils import generate_admission_letter, generate_fee_receipt
 
 app = Flask(__name__)
-app.secret_key = "svp_super_secret_key_123"
-import os
-from werkzeug.utils import secure_filename
+app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_key")
 
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
@@ -37,9 +39,7 @@ def login():
     if request.method == "POST":
         role = request.form["role"]
         username = request.form["username"]
-        password = hashlib.sha256(
-            request.form["password"].encode()
-        ).hexdigest()
+        password = request.form["password"]
 
         db = get_db()
         cur = db.cursor(dictionary=True)
@@ -47,12 +47,12 @@ def login():
         # ================= ADMIN LOGIN =================
         if role == "admin":
             cur.execute(
-                "SELECT * FROM admins WHERE username=%s AND password_hash=%s",
-                (username, password)
+                "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s)",
+                (username,)
             )
             admin = cur.fetchone()
 
-            if admin:
+            if admin and check_password_hash(admin["password_hash"], password):
                 session.clear()
                 session["admin"] = admin["username"]
                 return redirect("/admin")
@@ -61,15 +61,13 @@ def login():
 
         # ================= STUDENT LOGIN =================
         elif role == "student":
-            cur.execute("""
-                SELECT * FROM students
-                WHERE admission_id=%s
-                AND password_hash=%s
-            """, (username, password))
-
+            cur.execute(
+                "SELECT * FROM students WHERE LOWER(admission_id)=LOWER(%s)",
+                (username,)
+            )
             student = cur.fetchone()
 
-            if not student:
+            if not student or not check_password_hash(student["password_hash"], password):
                 return "❌ Invalid Student Credentials"
 
             if student["status"] == "ACTIVE":
@@ -86,15 +84,8 @@ def login():
             else:
                 return render_template("student_pending.html")
 
-        return "❌ Invalid Login Request"
-
     return render_template("login.html")
 
-
-
-# =========================
-# LOGOUT
-# =========================
 @app.route("/logout")
 def logout():
     session.clear()
@@ -131,9 +122,8 @@ def admission():
         admission_id = "SVP" + str(random.randint(10000, 99999))
 
         # PASSWORD (student creates)
-        password_hash = hashlib.sha256(
-            request.form["password"].encode()
-        ).hexdigest()
+        password_hash = generate_password_hash(request.form["password"])
+
 
         # =========================
         # FILE UPLOADS
@@ -174,37 +164,39 @@ def admission():
 
         # 2️⃣ STUDENT PERSONAL DETAILS
         cur.execute("""
-            INSERT INTO student_personal_details
-            (admission_id, student_mobile, student_email,
-             indian_nationality, religion, disability,
-             aadhaar_number,
-             caste_rd_number, caste_certificate_file,
-             income_rd_number, income_certificate_file,
-             annual_income,
-             mother_name, mother_mobile,
-             father_name, father_mobile,
-             residential_address, permanent_address)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            admission_id,
-            request.form["student_mobile"].strip().upper(),
-            request.form["student_email"].strip().upper(),
-            request.form["indian_nationality"].strip().upper(),
-            request.form["religion"].strip().upper(),
-            request.form["disability"].strip().upper(),
-            request.form["aadhaar_number"].strip().upper(),
-            request.form["caste_rd_number"].strip().upper(),
-            caste_name,
-            request.form["income_rd_number"].strip().upper(),
-            income_name,
-            request.form["annual_income"],
-            request.form["mother_name"].strip().upper(),
-            request.form["mother_mobile"],
-            request.form["father_name"].strip().upper(),
-            request.form["father_mobile"],
-            request.form["residential_address"],
-            request.form["permanent_address"]
-        ))
+    INSERT INTO student_personal_details
+    (admission_id, student_mobile, student_email,
+     indian_nationality, religion, disability,
+     aadhaar_number,
+     caste_rd_number, caste_certificate_file,
+     income_rd_number, income_certificate_file,
+     annual_income,
+     mother_name, mother_mobile,
+     father_name, father_mobile,
+     residential_address, permanent_address)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+""", (
+    admission_id,
+    request.form["student_mobile"].strip().upper(),
+    request.form["student_email"].strip(),   # ← comma added here
+    request.form["indian_nationality"].strip().upper(),
+    request.form["religion"].strip().upper(),
+    request.form["disability"].strip().upper(),
+    request.form["aadhaar_number"].strip().upper(),
+    request.form["caste_rd_number"].strip().upper(),
+    caste_name,
+    request.form["income_rd_number"].strip().upper(),
+    income_name,
+    request.form["annual_income"],
+    request.form["mother_name"].strip().upper(),
+    request.form["mother_mobile"],
+    request.form["father_name"].strip().upper(),
+    request.form["father_mobile"],
+    request.form["residential_address"],
+    request.form["permanent_address"]
+))
+
+        
 
         db.commit()
 
@@ -393,7 +385,8 @@ def admission_step3():
             admission["student_name"],
             admission["branch"],
             admission["student_mobile"],
-            hashlib.sha256(admission["password"].encode()).hexdigest()
+           generate_password_hash(admission["password"])
+
         ))
 
         # ===== PERSONAL DETAILS =====
@@ -494,7 +487,12 @@ def admin_applications():
 # ADMIN: APPROVE STUDENT
 # =========================
 @app.route("/approve/<admission_id>")
+
 def approve_student(admission_id):
+    if "admin" not in session:
+     return redirect("/login")
+
+    
     db = get_db()
     cur = db.cursor()
 
@@ -546,9 +544,8 @@ def add_student():
         branch = request.form["branch"]
         year_sem = request.form["year_sem"]
         mobile = request.form["mobile"]
-        password = hashlib.sha256(
-            request.form["password"].encode()
-        ).hexdigest()
+        password = password = generate_password_hash(request.form["password"])
+
 
         db = get_db()
         cur = db.cursor()
@@ -878,7 +875,8 @@ def upload_documents():
             admission["student_name"],
             admission["branch"],
             admission["student_mobile"],
-            hashlib.sha256(admission["password"].encode()).hexdigest()
+            generate_password_hash(admission["password"])
+
         ))
 
     db.commit()
@@ -1023,4 +1021,4 @@ def student_reupload():
 # RUN SERVER
 # =========================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()

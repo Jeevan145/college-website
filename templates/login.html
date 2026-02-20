@@ -1,29 +1,51 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>Login | SVP</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
-<div class="card">
-  <h2>SVP Login Portal</h2>
-  <p class="subtitle">Sri Venkateshwara Polytechnic</p>
+  <div class="card">
+    <h2>SVP Login Portal</h2>
+    <p class="subtitle">Sri Venkateshwara Polytechnic</p>
 
-  <form method="post">
-    <select name="role">
-      <option value="student">Student Login</option>
-      <option value="admin">Admin Login</option>
-    </select>
+    <form method="post">
+      <select name="role">
+        <option value="student">Student Login</option>
+        <option value="admin">Admin Login</option>
+      </select>
 
-    <input type="text" name="username" placeholder="Admission ID / Username" required>
-    <input type="password" name="password" placeholder="Password" required>
+      <input type="text" name="username" placeholder="Admission ID / Username" required>
+      <div class="password-wrapper">
+        <input type="password" name="password" id="login_password" placeholder="Password" required>
 
-    <button type="submit">Login</button>
-  </form>
-  <a href="/home">Home</a>
+        <span class="eye-icon" onclick="toggleLoginPassword()">👁</span>
+      </div>
 
+
+
+
+      <button type="submit">Login</button>
+    </form>
+    <a href="/home">Home</a>
+
+
+    <script>
+      function toggleLoginPassword() {
+        const passwordField = document.getElementById("login_password");
+
+        if (passwordField.type === "password") {
+          passwordField.type = "text";
+        } else {
+          passwordField.type = "password";
+        }
+      }
+    </script>
 
 
 </body>
+
 </html>
