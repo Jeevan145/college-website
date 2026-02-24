@@ -172,6 +172,12 @@ input, textarea {
   padding-right: 40px; /* space for eye icon */
 }
 
+/* Hide built-in Edge/IE password reveal icon when using custom toggle button */
+.password-wrapper input::-ms-reveal,
+.password-wrapper input::-ms-clear {
+  display: none;
+}
+
 .toggle-password {
   position: absolute;
   right: 12px;

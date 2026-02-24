@@ -8,6 +8,7 @@ import time
 import smtplib
 import zipfile
 import re
+import secrets
 from email.message import EmailMessage
 from datetime import date, datetime
 from werkzeug.utils import secure_filename
@@ -18,6 +19,10 @@ from pdf_utils import generate_admission_letter, generate_fee_receipt
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_key")
+
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 300
+AUTH_RATE_LIMIT_MAX_ATTEMPTS = 5
+_AUTH_FAILED_ATTEMPTS = {}
 
 
 def load_local_env(env_path=".env"):
@@ -37,6 +42,77 @@ def load_local_env(env_path=".env"):
     except Exception:
         # If .env cannot be read, continue with OS environment variables.
         pass
+
+
+def hash_password(password):
+    return generate_password_hash(password)
+
+
+def verify_password(stored_hash, raw_password):
+    if not stored_hash:
+        return False
+    try:
+        if check_password_hash(stored_hash, raw_password):
+            return True
+    except Exception:
+        pass
+    legacy_sha256 = hashlib.sha256(raw_password.encode()).hexdigest()
+    return stored_hash == legacy_sha256
+
+
+def client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _rate_limit_bucket(action, identity):
+    return f"{action}:{identity}"
+
+
+def is_auth_rate_limited(action, identity):
+    now = time.time()
+    key = _rate_limit_bucket(action, identity)
+    attempts = _AUTH_FAILED_ATTEMPTS.get(key, [])
+    attempts = [ts for ts in attempts if now - ts <= AUTH_RATE_LIMIT_WINDOW_SECONDS]
+    _AUTH_FAILED_ATTEMPTS[key] = attempts
+    return len(attempts) >= AUTH_RATE_LIMIT_MAX_ATTEMPTS
+
+
+def record_auth_failure(action, identity):
+    now = time.time()
+    key = _rate_limit_bucket(action, identity)
+    attempts = _AUTH_FAILED_ATTEMPTS.get(key, [])
+    attempts = [ts for ts in attempts if now - ts <= AUTH_RATE_LIMIT_WINDOW_SECONDS]
+    attempts.append(now)
+    _AUTH_FAILED_ATTEMPTS[key] = attempts
+
+
+def clear_auth_failures(action, identity):
+    key = _rate_limit_bucket(action, identity)
+    _AUTH_FAILED_ATTEMPTS.pop(key, None)
+
+
+def ensure_csrf_token():
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+def validate_csrf():
+    expected = session.get("_csrf_token")
+    provided = request.form.get("_csrf_token", "")
+    if not expected or not provided:
+        return False
+    return secrets.compare_digest(str(expected), str(provided))
+
+
+@app.context_processor
+def inject_csrf_token():
+    return {"csrf_token": ensure_csrf_token}
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -569,15 +645,23 @@ def login():
 def login_student():
     error = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("login_student.html", error=error)
+
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        raw_password = request.form.get("password", "")
+        identity = f"{client_ip()}:{username.lower()}"
+        if is_auth_rate_limited("student_login", identity):
+            error = "Too many failed attempts. Try again in 5 minutes."
+            return render_template("login_student.html", error=error)
 
         db = get_db()
         cur = db.cursor(dictionary=True)
         cur.execute("""
             SELECT * FROM students
             WHERE UPPER(admission_id)=UPPER(%s)
-            LIMIT 1
         """, (username,))
         student = cur.fetchone()
         cur.close()
@@ -585,14 +669,16 @@ def login_student():
 
         if not student or not verify_password_compat(student.get("password_hash"), password):
             error = "Invalid student credentials."
-        elif student["status"] == "ACTIVE":
+            return render_template("login_student.html", error=error)
+
+        clear_auth_failures("student_login", identity)
+        if student["status"] == "ACTIVE":
             session.clear()
             session["student"] = student["admission_id"]
             return redirect("/student")
         elif student["status"] == "REJECTED":
             return render_template("student_rejected.html", reason=student.get("rejection_reason"))
-        else:
-            return render_template("student_pending.html")
+        return render_template("student_pending.html")
 
     return render_template("login_student.html", error=error)
 
@@ -602,39 +688,51 @@ def login_staff_admin():
     ensure_staff_auth_tables()
     error = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("login_staff_admin.html", error=error)
+
         login_type = request.form.get("login_type", "staff").strip().lower()
         login_id = request.form.get("login_id", "").strip()
-        password_hash = hashlib.sha256(request.form.get("password", "").encode()).hexdigest()
+        raw_password = request.form.get("password", "")
+        identity = f"{client_ip()}:{login_type}:{login_id.lower()}"
+        if is_auth_rate_limited("staff_admin_login", identity):
+            error = "Too many failed attempts. Try again in 5 minutes."
+            return render_template("login_staff_admin.html", error=error)
 
         db = get_db()
         cur = db.cursor(dictionary=True)
 
         if login_type == "admin":
             cur.execute(
-                "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s) AND password_hash=%s",
-                (login_id, password_hash)
+                "SELECT * FROM admins WHERE LOWER(username)=LOWER(%s)",
+                (login_id,)
             )
             admin = cur.fetchone()
-            if admin:
+            if admin and verify_password(admin.get("password_hash", ""), raw_password):
+                clear_auth_failures("staff_admin_login", identity)
                 session.clear()
                 session["admin"] = admin["username"]
                 cur.close()
                 db.close()
                 return redirect("/admin")
+            record_auth_failure("staff_admin_login", identity)
             error = "Invalid admin credentials."
         else:
             cur.execute("""
                 SELECT * FROM staff_accounts
-                WHERE LOWER(email)=LOWER(%s) AND password_hash=%s AND is_verified=1
-            """, (login_id, password_hash))
+                WHERE LOWER(email)=LOWER(%s) AND is_verified=1
+            """, (login_id,))
             staff = cur.fetchone()
-            if staff:
+            if staff and verify_password(staff.get("password_hash", ""), raw_password):
+                clear_auth_failures("staff_admin_login", identity)
                 session.clear()
                 session["admin"] = staff["email"]
                 session["staff_id"] = staff["id"]
                 cur.close()
                 db.close()
                 return redirect("/admin")
+            record_auth_failure("staff_admin_login", identity)
             error = "Invalid staff credentials."
 
         cur.close()
@@ -660,6 +758,10 @@ def staff_register():
     error = ""
     message = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("staff_register.html", error=error, message=message, departments=departments)
+
         employee_name = request.form.get("employee_name", "").strip()
         department = request.form.get("department", "").strip()
         designation = request.form.get("designation", "").strip()
@@ -696,7 +798,7 @@ def staff_register():
                     "department": department,
                     "designation": designation,
                     "email": email,
-                    "password_hash": hashlib.sha256(password.encode()).hexdigest(),
+                    "password_hash": hash_password(password),
                 }
                 otp = start_otp_flow("staff_register", email, pending)
                 sent, msg = send_otp_email(email, "SVP Staff Registration OTP", otp)
@@ -716,6 +818,10 @@ def staff_register_verify():
     error = ""
     message = request.args.get("msg", "")
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("staff_register_verify.html", email=email, error=error, message=message)
+
         otp = request.form.get("otp", "").strip()
         ok, msg = verify_otp_flow("staff_register", email, otp)
         if not ok:
@@ -750,6 +856,10 @@ def forgot_password_student():
     error = ""
     message = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("forgot_password_student.html", error=error, message=message)
+
         email = request.form.get("email", "").strip().lower()
         db = get_db()
         cur = db.cursor(dictionary=True)
@@ -771,7 +881,7 @@ def forgot_password_student():
             if not sent:
                 error = msg
             else:
-                return redirect(url_for("forgot_password_student_verify", email=email))
+                return redirect(url_for("forgot_password_student_verify"))
 
     return render_template("forgot_password_student.html", error=error, message=message)
 
@@ -779,8 +889,15 @@ def forgot_password_student():
 @app.route("/forgot-password/student/verify", methods=["GET", "POST"])
 def forgot_password_student_verify():
     email = request.args.get("email", "").strip().lower() or request.form.get("email", "").strip().lower()
+    flow = session.get("otp_flow") or {}
+    if (not email) and flow.get("flow_key") == "student_forgot_password":
+        email = str(flow.get("email") or "").strip().lower()
     error = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("forgot_password_verify.html", email=email, error=error, role_name="Student")
+
         otp = request.form.get("otp", "").strip()
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
@@ -788,6 +905,8 @@ def forgot_password_student_verify():
             error = "Password must be at least 6 characters."
         elif new_password != confirm_password:
             error = "Passwords do not match."
+        elif not email:
+            error = "OTP session not found. Please request OTP again."
         else:
             ok, msg = verify_otp_flow("student_forgot_password", email, otp)
             if not ok:
@@ -815,6 +934,10 @@ def forgot_password_staff():
     ensure_staff_auth_tables()
     error = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("forgot_password_staff.html", error=error)
+
         email = request.form.get("email", "").strip().lower()
         db = get_db()
         cur = db.cursor(dictionary=True)
@@ -841,6 +964,10 @@ def forgot_password_staff_verify():
     email = request.args.get("email", "").strip().lower() or request.form.get("email", "").strip().lower()
     error = ""
     if request.method == "POST":
+        if not validate_csrf():
+            error = "Session expired. Refresh and try again."
+            return render_template("forgot_password_verify.html", email=email, error=error, role_name="Staff")
+
         otp = request.form.get("otp", "").strip()
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
@@ -859,7 +986,7 @@ def forgot_password_staff_verify():
                 cur = db.cursor()
                 cur.execute(
                     "UPDATE staff_accounts SET password_hash=%s WHERE id=%s",
-                    (hashlib.sha256(new_password.encode()).hexdigest(), staff_id)
+                    (hash_password(new_password), staff_id)
                 )
                 db.commit()
                 cur.close()

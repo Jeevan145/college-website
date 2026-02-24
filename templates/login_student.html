@@ -10,6 +10,7 @@
     <p class="subtitle">Login with Admission ID and password</p>
     {% if error %}<p style="color:#c62828">{{ error }}</p>{% endif %}
     <form method="post">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="username" class="preserve-case" placeholder="Admission ID" required>
       <div class="password-wrapper">
         <input type="password" id="student_login_password" name="password" class="preserve-case" placeholder="Password" required autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" autocomplete="current-password">
