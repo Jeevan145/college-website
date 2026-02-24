@@ -24,11 +24,37 @@
         <option value="Staff">Staff</option>
       </select>
       <input type="email" name="email" placeholder="Gmail (example@gmail.com)" required>
-      <input type="password" name="password" placeholder="Password" required>
-      <input type="password" name="confirm_password" placeholder="Confirm Password" required>
+      <div class="password-wrapper">
+        <input type="password" id="staff_register_password" name="password" class="preserve-case" placeholder="Password" required autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" autocomplete="new-password">
+        <button type="button" class="toggle-password" onclick="togglePassword('staff_register_password', this)" aria-label="Show password" title="Show password">
+          <span aria-hidden="true">&#128065;</span>
+        </button>
+      </div>
+      <div class="password-wrapper">
+        <input type="password" id="staff_register_confirm_password" name="confirm_password" class="preserve-case" placeholder="Confirm Password" required autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" autocomplete="new-password">
+        <button type="button" class="toggle-password" onclick="togglePassword('staff_register_confirm_password', this)" aria-label="Show password" title="Show password">
+          <span aria-hidden="true">&#128065;</span>
+        </button>
+      </div>
       <button type="submit">Send OTP</button>
     </form>
     <a class="link" href="/login/staff">Back to Login</a>
   </div>
+<script>
+  function togglePassword(fieldId, toggleButton) {
+    const passwordField = document.getElementById(fieldId);
+    if (!passwordField) return;
+
+    if (passwordField.type === "password") {
+      passwordField.type = "text";
+      toggleButton.setAttribute("aria-label", "Hide password");
+      toggleButton.setAttribute("title", "Hide password");
+    } else {
+      passwordField.type = "password";
+      toggleButton.setAttribute("aria-label", "Show password");
+      toggleButton.setAttribute("title", "Show password");
+    }
+  }
+</script>
 </body>
 </html>

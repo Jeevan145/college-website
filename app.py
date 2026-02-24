@@ -349,6 +349,69 @@ def current_academic_year(today=None):
     return f"{start_year}-{str((start_year + 1) % 100).zfill(2)}"
 
 
+def normalize_branch_key(branch_name):
+    raw = (branch_name or "").strip().lower().replace("&", " and ")
+    cleaned = re.sub(r"[^a-z0-9]+", " ", raw)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def branch_code_for_admission(branch_name):
+    key = normalize_branch_key(branch_name)
+    branch_codes = {
+        "computer science and engineering": "CS",
+        "computer engineering": "CS",
+        "automobile engineering": "AT",
+        "automobile": "AT",
+        "electronics and communication engineering": "EC",
+        "electronic and communication engineering": "EC",
+        "electronics and communication": "EC",
+        "mechanical engineering": "ME",
+        "mechanical": "ME",
+    }
+    code = branch_codes.get(key)
+    if code:
+        return code
+
+    parts = [p for p in key.split(" ") if p]
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[1][0]).upper()
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return "SV"
+
+
+def generate_admission_id(branch_name, academic_year=None):
+    ay = (academic_year or current_academic_year()).strip()
+    match = re.search(r"(\d{4})", ay)
+    start_year = int(match.group(1)) if match else datetime.today().year
+    yy = str(start_year)[-2:]
+    prefix = f"{branch_code_for_admission(branch_name)}{yy}"
+    pattern = f"{prefix}%"
+
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("SELECT admission_id FROM students WHERE admission_id LIKE %s", (pattern,))
+        rows = cur.fetchall() or []
+    finally:
+        cur.close()
+        db.close()
+
+    max_seq = 0
+    seq_pattern = re.compile(rf"^{re.escape(prefix)}(\d{{3}})$")
+    for row in rows:
+        value = row[0] if isinstance(row, (list, tuple)) else row.get("admission_id")
+        text = str(value or "").strip().upper()
+        seq_match = seq_pattern.match(text)
+        if seq_match:
+            max_seq = max(max_seq, int(seq_match.group(1)))
+
+    next_seq = max_seq + 1
+    if next_seq > 999:
+        raise ValueError(f"Admission sequence limit reached for {prefix}")
+    return f"{prefix}{next_seq:03d}"
+
+
 def parse_int_prefix(text):
     if text is None:
         return None
@@ -467,6 +530,20 @@ def infer_uploaded_doc_files(admission_id, docs):
     return resolved
 
 
+def verify_password_compat(stored_hash, raw_password):
+    stored = str(stored_hash or "").strip()
+    if not stored:
+        return False
+
+    try:
+        if check_password_hash(stored, raw_password):
+            return True
+    except Exception:
+        pass
+
+    return stored == hashlib.sha256((raw_password or "").encode()).hexdigest()
+
+
 @app.route("/")
 def root():
     return redirect("/home")
@@ -493,20 +570,20 @@ def login_student():
     error = ""
     if request.method == "POST":
         username = request.form.get("username", "").strip()
-        password_hash = hashlib.sha256(request.form.get("password", "").encode()).hexdigest()
+        password = request.form.get("password", "")
 
         db = get_db()
         cur = db.cursor(dictionary=True)
         cur.execute("""
             SELECT * FROM students
             WHERE UPPER(admission_id)=UPPER(%s)
-            AND password_hash=%s
-        """, (username, password_hash))
+            LIMIT 1
+        """, (username,))
         student = cur.fetchone()
         cur.close()
         db.close()
 
-        if not student:
+        if not student or not verify_password_compat(student.get("password_hash"), password):
             error = "Invalid student credentials."
         elif student["status"] == "ACTIVE":
             session.clear()
@@ -722,7 +799,7 @@ def forgot_password_student_verify():
                 cur = db.cursor()
                 cur.execute(
                     "UPDATE students SET password_hash=%s WHERE admission_id=%s",
-                    (hashlib.sha256(new_password.encode()).hexdigest(), admission_id)
+                    (generate_password_hash(new_password), admission_id)
                 )
                 db.commit()
                 cur.close()
@@ -1233,7 +1310,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 @app.route("/admission", methods=["GET", "POST"])
 def admission():
     if request.method == "POST":
-        admission_id = "SVP" + str(random.randint(10000, 99999))
+        admission_id = generate_admission_id(
+            request.form.get("branch", ""),
+            current_academic_year()
+        )
 
         # PASSWORD (student creates)
         password_hash = generate_password_hash(request.form["password"])
@@ -1324,10 +1404,11 @@ def admission():
 @app.route("/admission/step-1", methods=["GET", "POST"])
 def admission_step1():
     if request.method == "POST":
-        admission_id = "SVP" + str(random.randint(10000, 99999))
+        admission_year = current_academic_year()
 
         session["admission"] = {
-            "admission_id": admission_id,
+            "admission_id": None,
+            "admission_year": admission_year,
 
             # Student Personal
             "student_name": request.form["student_name"],
@@ -1449,6 +1530,13 @@ def admission_step3():
     # POST → VALIDATION & SUBMIT
     # =========================
     if request.method == "POST":
+        if not admission.get("admission_id"):
+            admission["admission_id"] = generate_admission_id(
+                admission.get("branch", ""),
+                admission.get("admission_year") or current_academic_year()
+            )
+            session["admission"] = admission
+            session.modified = True
 
         # ===== READ STEP-3 FORM DATA =====
         aadhaar_number = request.form.get("aadhaar_number", "").strip().upper()

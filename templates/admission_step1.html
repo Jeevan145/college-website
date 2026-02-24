@@ -3,68 +3,17 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Admission – Step 1</title>
+  <title>Admission - Step 1</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 </head>
-<<<<<<< HEAD
-=======
-<script>
-  document.addEventListener("input", function (e) {
-    const isEditable = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
-    const isPasswordLike =
-      e.target.type === "password" ||
-      e.target.name === "password" ||
-      e.target.id === "password" ||
-      e.target.classList.contains("preserve-case");
-
-    if (
-      isEditable &&
-      !isPasswordLike
-    ) {
-      e.target.value = e.target.value.toUpperCase();
-    }
-  });
-</script>
-<script>
-document.addEventListener("input", function (e) {
-  if (e.target.matches('input[name="password"]')) {
-    e.stopImmediatePropagation();
-  }
-}, true);
-
-document.addEventListener("keydown", function (e) {
-  if (e.target.matches('input[name="password"]')) {
-    e.stopImmediatePropagation();
-  }
-}, true);
-
-function togglePassword() {
-  const password = document.getElementById("password");
-  const toggleButton = document.getElementById("togglePasswordBtn");
-
-  if (password.type === "password") {
-    password.type = "text";
-    toggleButton.setAttribute("aria-label", "Hide password");
-    toggleButton.setAttribute("title", "Hide password");
-  } else {
-    password.type = "password";
-    toggleButton.setAttribute("aria-label", "Show password");
-    toggleButton.setAttribute("title", "Show password");
-  }
-}
-</script>
-
-
-
->>>>>>> 65ee43f (Updated college website features and admin modules)
 
 <body>
 
   <div class="card admission-card">
 
     <h2>Online Admission</h2>
-    <p class="subtitle">Step 1 of 3 – Student & Academic Details</p>
+    <p class="subtitle">Step 1 of 3 - Student and Academic Details</p>
 
     <div class="progress-bar">
       <div class="progress-fill step-1"></div>
@@ -191,32 +140,19 @@ function togglePassword() {
             <option>Mechanical Engineering</option>
           </select>
 
-<<<<<<< HEAD
-          <div style="position: relative;">
-            <input type="password" name="password" id="password" placeholder="Create Password" required
-              style="padding-right:40px;">
-
-            <span onclick="togglePassword()" style="position:absolute; right:10px; top:50%;
-              transform:translateY(-50%);
-              cursor:pointer; font-size:18px;">
-              👁
-            </span>
-          </div>
-=======
           <div class="password-wrapper">
-  <input type="password" name="password" id="password" class="preserve-case" placeholder="Create Password" required autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" autocomplete="new-password">
-    <button type="button" id="togglePasswordBtn" class="toggle-password" onclick="togglePassword()" aria-label="Show password" title="Show password">
-    <span aria-hidden="true">&#128065;</span>
-  </button>
-</div>
->>>>>>> 65ee43f (Updated college website features and admin modules)
+            <input type="password" name="password" id="password" class="preserve-case" placeholder="Create Password" required autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" autocomplete="new-password">
+            <button type="button" id="togglePasswordBtn" class="toggle-password" onclick="togglePassword()" aria-label="Show password" title="Show password">
+              <span aria-hidden="true">&#128065;</span>
+            </button>
+          </div>
 
         </div>
       </div>
 
       <div class="form-actions">
         <button type="submit" class="btn primary">
-          Next →
+          Next ->
         </button>
       </div>
 
@@ -225,13 +161,15 @@ function togglePassword() {
 
   <!-- ================= SCRIPTS ================= -->
   <script>
-
-    /* Uppercase only selected fields */
     document.addEventListener("input", function (e) {
-      if (
-        e.target.name === "student_name" ||
-        e.target.name === "religion"
-      ) {
+      const isEditable = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+      const isPasswordLike =
+        e.target.type === "password" ||
+        e.target.name === "password" ||
+        e.target.id === "password" ||
+        e.target.classList.contains("preserve-case");
+
+      if (isEditable && !isPasswordLike) {
         e.target.value = e.target.value.toUpperCase();
       }
     });
@@ -253,42 +191,44 @@ function togglePassword() {
       input.value = input.value.replace(/[^0-9]/g, "");
 
       if (input.value.length < 10) {
-        msg.textContent = "❌ Invalid mobile number";
+        msg.textContent = "Invalid mobile number";
         msg.style.color = "red";
       } else {
-        msg.textContent = "✅ Valid mobile number";
+        msg.textContent = "Valid mobile number";
         msg.style.color = "green";
       }
     }
 
     function validateEmail() {
-      let email = document.getElementById("student_email").value.trim();
-      let msg = document.getElementById("email_msg");
-
-      let pattern = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
+      const email = document.getElementById("student_email").value.trim();
+      const msg = document.getElementById("email_msg");
+      const pattern = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
 
       if (pattern.test(email)) {
         msg.style.color = "green";
-        msg.textContent = "✓ Valid Gmail address";
+        msg.textContent = "Valid Gmail address";
       } else {
         msg.style.color = "red";
-        msg.textContent = "✖ Invalid Gmail address";
+        msg.textContent = "Invalid Gmail address";
       }
     }
 
     function togglePassword() {
-      const passwordField = document.getElementById("password");
+      const password = document.getElementById("password");
+      const toggleButton = document.getElementById("togglePasswordBtn");
 
-      if (passwordField.type === "password") {
-        passwordField.type = "text";
+      if (password.type === "password") {
+        password.type = "text";
+        toggleButton.setAttribute("aria-label", "Hide password");
+        toggleButton.setAttribute("title", "Hide password");
       } else {
-        passwordField.type = "password";
+        password.type = "password";
+        toggleButton.setAttribute("aria-label", "Show password");
+        toggleButton.setAttribute("title", "Show password");
       }
     }
-
   </script>
 
 </body>
 
 </html>
-
