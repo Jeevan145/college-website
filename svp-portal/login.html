@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login | Sri Venkateshwara Polytechnic</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body class="login-body">
+
+<div class="login-box">
+  <h2>Login Portal</h2>
+  <p>Sri Venkateshwara Polytechnic</p>
+
+  <select id="role">
+    <option value="student">Student Login</option>
+    <option value="admin">Admin Login</option>
+  </select>
+
+  <input type="text" id="username" placeholder="Username">
+  <input type="password" id="password" placeholder="Password">
+
+  <button onclick="login()">Login</button>
+
+  <p class="hint">
+    Demo Credentials<br>
+    Student → student / 1234<br>
+    Admin → admin / admin123
+  </p>
+</div>
+
+<script src="login.js"></script>
+</body>
+</html>
