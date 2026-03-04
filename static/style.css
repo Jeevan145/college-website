@@ -406,6 +406,424 @@ input, textarea {
   display: none;
 }
 
+.fees-page .header h2 {
+  letter-spacing: 0.4px;
+  color: #ffffff;
+}
+
+.fees-page .subtitle {
+  opacity: 0.92;
+  color: #d7e5ff;
+}
+
+.fees-page.employee-page {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.fees-page .employee-filters-card,
+.fees-page .employee-table-card {
+  background: #f8fbff;
+  border: 1px solid #dce5f5;
+}
+
+.fees-page .employee-table th,
+.fees-page .employee-table td {
+  color: #1f2a44;
+}
+
+.fees-page .employee-table th {
+  background: #edf3ff;
+}
+
+.fees-page .table-link {
+  background: #f3f7ff;
+  border-color: #c8d7f3;
+  color: #1f3f73;
+}
+
+.fees-alert {
+  margin-bottom: 10px;
+  border-left: 4px solid #2f67c8;
+  background: #eef4ff !important;
+  color: #173a72;
+}
+
+.fees-structure-card {
+  margin-top: 12px;
+}
+
+.fees-top-panels {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.fees-top-panels .fees-structure-card {
+  margin-top: 0;
+}
+
+.fees-form-title {
+  margin-bottom: 14px;
+  color: #1f2a44;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.fees-filter-form,
+.fees-structure-form {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.fees-filter-form input,
+.fees-filter-form select,
+.fees-structure-form input,
+.fees-structure-form select {
+  margin-bottom: 0;
+  border: 1px solid #d5dcef;
+  background: #ffffff;
+  color: #1e2a44;
+  border-radius: 10px;
+  padding: 11px 12px;
+}
+
+.fees-filter-form button,
+.fees-structure-form button {
+  width: auto;
+  min-width: 150px;
+  margin-bottom: 0;
+  border-radius: 10px;
+  padding: 11px 16px;
+  background: #1f4f99;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.fees-filter-form button:hover,
+.fees-structure-form button:hover {
+  background: #173d78;
+  transform: none;
+  box-shadow: none;
+}
+
+.fees-export-link {
+  margin-top: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid #c8d7f3;
+  background: #ffffff;
+  color: #1f3f73;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.fees-export-link:hover {
+  text-decoration: none;
+  background: #edf3ff;
+}
+
+.fees-delete-btn {
+  width: auto;
+  min-width: 86px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #ffe6e6;
+  border: 1px solid #f4b9b9;
+  color: #8a2020;
+  box-shadow: none;
+}
+
+.fees-delete-btn:hover {
+  transform: none;
+  background: #ffd6d6;
+  box-shadow: none;
+}
+
+.fees-stats-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.fees-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fees-stat {
+  background: #ffffff;
+  border: 1px solid #dce5f5;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.fees-stat-label {
+  font-size: 12px;
+  color: #5a6f96;
+  margin-bottom: 6px;
+}
+
+.fees-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f3f73;
+}
+
+@media (max-width: 1200px) {
+  .fees-top-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .fees-filter-form,
+  .fees-structure-form {
+    grid-template-columns: repeat(3, minmax(170px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .fees-filter-form,
+  .fees-structure-form {
+    grid-template-columns: 1fr;
+  }
+
+  .fees-filter-form button,
+  .fees-structure-form button,
+  .fees-export-link {
+    width: 100%;
+  }
+
+  .fees-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Fees page: clean professional admin look */
+body.fees-body {
+  background: #eef2f7;
+  color: #1f2937;
+  display: block;
+  min-height: 100vh;
+  padding: 28px 18px;
+}
+
+body.fees-body .fees-page.employee-page {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+body.fees-body .fees-page .header {
+  text-align: left;
+  margin-bottom: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+body.fees-body .fees-page .header h2 {
+  color: #0f172a;
+  font-size: 24px;
+  margin-bottom: 6px;
+}
+
+body.fees-body .fees-page .subtitle {
+  color: #64748b;
+  margin: 0;
+}
+
+body.fees-body .fees-page .table-actions {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+body.fees-body .fees-page .back-dashboard-link {
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+body.fees-body .fees-page .back-dashboard-link:hover {
+  background: #f8fafc;
+}
+
+body.fees-body .fees-page .employee-filters-card,
+body.fees-body .fees-page .employee-table-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+body.fees-body .fees-alert {
+  border-left: 4px solid #2563eb;
+  background: #eff6ff !important;
+  color: #1e3a8a;
+}
+
+body.fees-body .fees-filter-form {
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
+}
+
+body.fees-body .fees-structure-form {
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+}
+
+body.fees-body .fees-filter-form input,
+body.fees-body .fees-filter-form select,
+body.fees-body .fees-structure-form input,
+body.fees-body .fees-structure-form select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+body.fees-body .fees-filter-form button,
+body.fees-body .fees-structure-form button {
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 10px 14px;
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+body.fees-body .fees-filter-form button:hover,
+body.fees-body .fees-structure-form button:hover {
+  background: #1d4ed8;
+  transform: none;
+}
+
+body.fees-body .fees-export-link {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  border-radius: 8px;
+  min-height: 42px;
+}
+
+body.fees-body .fees-export-link:hover {
+  background: #f8fafc;
+}
+
+body.fees-body .fees-top-panels {
+  grid-template-columns: 1.7fr 1fr;
+  gap: 12px;
+}
+
+body.fees-body .fees-stats-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+body.fees-body .fees-stat {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+body.fees-body .fees-stat-label {
+  color: #64748b;
+}
+
+body.fees-body .fees-stat-value {
+  color: #0f172a;
+}
+
+body.fees-body .fees-page .table-wrap {
+  background: #ffffff;
+}
+
+body.fees-body .fees-page .employee-table th {
+  background: #f8fafc;
+  color: #334155;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+body.fees-body .fees-page .employee-table td {
+  color: #1f2937;
+  border-bottom: 1px solid #edf2f7;
+}
+
+body.fees-body .fees-page .employee-table tbody tr:nth-child(even) {
+  background: #fcfdff;
+}
+
+body.fees-body .fees-page .table-link {
+  background: #f8fafc;
+  border: 1px solid #dbe3ef;
+  color: #334155;
+}
+
+body.fees-body .fees-page .table-link:hover {
+  background: #f1f5f9;
+}
+
+body.fees-body .fees-delete-btn {
+  border-radius: 8px;
+  border: 1px solid #f1b5b5;
+  background: #fff1f1;
+  color: #9f2f2f;
+  min-height: 36px;
+}
+
+body.fees-body .fees-delete-btn:hover {
+  background: #ffe5e5;
+  transform: none;
+}
+
+@media (max-width: 1200px) {
+  body.fees-body .fees-filter-form {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+
+  body.fees-body .fees-top-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  body.fees-body {
+    padding: 14px;
+  }
+
+  body.fees-body .fees-page .header h2 {
+    font-size: 20px;
+  }
+
+  body.fees-body .fees-filter-form,
+  body.fees-body .fees-structure-form {
+    grid-template-columns: 1fr;
+  }
+
+  body.fees-body .fees-filter-form button,
+  body.fees-body .fees-structure-form button,
+  body.fees-body .fees-export-link {
+    width: 100%;
+  }
+
+  body.fees-body .fees-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .student-list-page .header {
   text-align: center;
 }

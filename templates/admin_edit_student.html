@@ -21,6 +21,8 @@
 
       <input type="text" name="mobile" class="preserve-case" placeholder="Mobile Number" value="{{ student.mobile }}" required>
       <input type="text" name="college_reg_no" class="preserve-case" placeholder="College Reg No" value="{{ student.college_reg_no }}">
+      <input type="text" name="admission_year" class="preserve-case" value="{{ student.admission_year if student.admission_year else '' }}" readonly>
+      <input type="number" name="year_sem" min="1" max="6" placeholder="Manual Semester Override (1-6)" value="{{ student.year_sem if student.year_sem else '' }}">
 
       <select name="gender" class="preserve-case">
         <option value="">Select Gender</option>
@@ -30,7 +32,10 @@
       </select>
 
       <input type="text" name="caste_category" class="preserve-case" placeholder="Caste Category" value="{{ student.caste_category }}">
-      <input type="text" name="alloted_category" class="preserve-case" placeholder="Alloted Category" value="{{ student.alloted_category }}">
+      <input type="text" name="alloted_category" class="preserve-case" placeholder="Alloted Category" value="{{ student.alloted_category }}" {% if not can_set_alloted_category %}readonly{% endif %}>
+      {% if not can_set_alloted_category %}
+      <small>Only Admin/Management can update Alloted Category.</small>
+      {% endif %}
       <input type="text" name="register_number" class="preserve-case" placeholder="Qualifying Exam Reg No" value="{{ student.register_number }}">
 
       <button type="submit" class="save-employee-btn">Update Student</button>

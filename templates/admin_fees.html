@@ -4,8 +4,8 @@
   <title>Fees Management | Admin</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-  <div class="dashboard employee-page student-list-page">
+<body class="fees-body">
+  <div class="dashboard employee-page student-list-page fees-page">
     <div class="header">
       <h2>SRI VENKATESHWARA POLYTECHNIC</h2>
       <p class="subtitle">Fees Ledger - Current Semester / {{ default_academic_year }}</p>
@@ -16,13 +16,13 @@
     </div>
 
     {% if msg %}
-      <div class="employee-filters-card" style="margin-bottom: 10px;">
+      <div class="employee-filters-card fees-alert">
         <b>{{ msg }}</b>
       </div>
     {% endif %}
 
     <div class="employee-filters-card">
-      <form method="get" class="employee-filters student-filters no-print">
+      <form method="get" class="fees-filter-form no-print">
         <input
           type="text"
           name="q"
@@ -31,7 +31,7 @@
           value="{{ filters.q }}"
         >
 
-        {% if is_staff %}
+        {% if is_staff and not is_management_staff %}
           <input type="text" value="{{ staff_department }}" readonly>
           <input type="hidden" name="branch" value="{{ staff_department }}">
         {% else %}
@@ -68,43 +68,68 @@
         </select>
 
         <button type="submit">Apply</button>
-        <a class="link" href="/admin/fees/export?q={{ filters.q }}&branch={{ filters.branch }}&sem={{ filters.sem }}&payment_state={{ filters.payment_state }}&sort_by={{ filters.sort_by }}">Export Fees (Excel)</a>
+        <a class="link fees-export-link" href="/admin/fees/export?q={{ filters.q }}&branch={{ filters.branch }}&sem={{ filters.sem }}&payment_state={{ filters.payment_state }}&sort_by={{ filters.sort_by }}">Export Fees (Excel)</a>
       </form>
     </div>
 
-    {% if can_manage_fees %}
-    <div class="employee-filters-card no-print" style="margin-top: 12px;">
-      <form method="post" class="employee-filters student-filters">
-        {% if is_staff %}
-          <input type="text" value="{{ staff_department }}" readonly>
-          <input type="hidden" name="fee_branch" value="{{ staff_department }}">
-        {% else %}
-          <select name="fee_branch" required>
-            <option value="">Select Branch</option>
-            {% for b in branches %}
-              <option value="{{ b }}">{{ b }}</option>
+    <div class="fees-top-panels no-print">
+      {% if can_manage_fees %}
+      <div class="employee-filters-card fees-structure-card">
+        <h3 class="fees-form-title">Set Fee Structure</h3>
+        <form method="post" class="fees-structure-form">
+          {% if is_staff and not is_management_staff %}
+            <input type="text" value="{{ staff_department }}" readonly>
+            <input type="hidden" name="fee_branch" value="{{ staff_department }}">
+          {% else %}
+            <select name="fee_branch" required>
+              <option value="">Select Branch</option>
+              {% for b in branches %}
+                <option value="{{ b }}">{{ b }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
+          <select name="semester_no" required>
+            <option value="">Select Semester</option>
+            {% for sem_no in [1,2,3,4,5,6] %}
+              <option value="{{ sem_no }}">Sem {{ sem_no }}</option>
             {% endfor %}
           </select>
-        {% endif %}
-        <select name="semester_no" required>
-          <option value="">Select Semester</option>
-          {% for sem_no in [1,2,3,4,5,6] %}
-            <option value="{{ sem_no }}">Sem {{ sem_no }}</option>
-          {% endfor %}
-        </select>
-        <input type="text" name="academic_year" value="{{ default_academic_year }}" placeholder="Academic Year" required>
-        <input type="number" step="0.01" min="0" name="admission_fee_due" placeholder="Admission Fee Due">
-        <input type="number" step="0.01" min="0" name="tuition_fee_due" placeholder="Tuition Fee Due">
-        <input type="number" step="0.01" min="0" name="management_fee_due" placeholder="Management Fee Due">
-        <input type="number" step="0.01" min="0" name="exam_fee_due" placeholder="Exam Fee Due">
-        <button type="submit">Save Fee Structure</button>
-      </form>
+          <input type="text" name="academic_year" value="{{ default_academic_year }}" placeholder="Academic Year" required>
+          <input type="number" step="0.01" min="0" name="admission_fee_due" placeholder="Admission Fee Due">
+          <input type="number" step="0.01" min="0" name="tuition_fee_due" placeholder="Tuition Fee Due">
+          <input type="number" step="0.01" min="0" name="management_fee_due" placeholder="Management Fee Due">
+          <input type="number" step="0.01" min="0" name="exam_fee_due" placeholder="Exam Fee Due">
+          <button type="submit">Save Fee Structure</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="employee-filters-card fees-structure-card">
+        <b>View only access:</b> only Admin, HOD, or Management staff can add/edit fee details.
+      </div>
+      {% endif %}
+
+      <div class="employee-filters-card fees-stats-card">
+        <h3 class="fees-form-title">Quick Snapshot</h3>
+        <div class="fees-stats-grid">
+          <div class="fees-stat">
+            <div class="fees-stat-label">Total Students</div>
+            <div class="fees-stat-value">{{ students|length }}</div>
+          </div>
+          <div class="fees-stat">
+            <div class="fees-stat-label">Paid</div>
+            <div class="fees-stat-value">{{ students|selectattr('payment_state', 'equalto', 'PAID')|list|length }}</div>
+          </div>
+          <div class="fees-stat">
+            <div class="fees-stat-label">Pending</div>
+            <div class="fees-stat-value">{{ students|selectattr('payment_state', 'equalto', 'PENDING')|list|length }}</div>
+          </div>
+          <div class="fees-stat">
+            <div class="fees-stat-label">Not Paid</div>
+            <div class="fees-stat-value">{{ students|selectattr('payment_state', 'equalto', 'NOT PAID')|list|length }}</div>
+          </div>
+        </div>
+      </div>
     </div>
-    {% else %}
-    <div class="employee-filters-card no-print" style="margin-top: 12px;">
-      <b>View only access:</b> only Admin, HOD, or Management staff can add/edit fee details.
-    </div>
-    {% endif %}
 
     <div class="employee-table-card">
       <div class="table-wrap">
@@ -122,6 +147,7 @@
               <th>Balance</th>
               <th>Fee State</th>
               <th class="no-print">History</th>
+              {% if can_manage_fees %}<th class="no-print">Delete Student</th>{% endif %}
             </tr>
           </thead>
           <tbody>
@@ -135,13 +161,20 @@
                 <td>{{ s.current_sem }}</td>
                 <td>{{ s.total_due }}</td>
                 <td>{{ s.total_paid }}</td>
-                <td>{{ s.balance }}</td>
+                <td>{{ ('{:,.2f}'.format(s.balance|default(0, true)|float)).rstrip('0').rstrip('.') }}</td>
                 <td>{{ s.payment_state }}</td>
                 <td class="no-print"><a class="table-link" href="/admin/fees/student/{{ s.admission_id }}">Open</a></td>
+                {% if can_manage_fees %}
+                <td class="no-print">
+                  <form method="post" action="/admin/fees/student/{{ s.admission_id }}/delete" onsubmit="return confirm('Delete this student and related fee records?');">
+                    <button type="submit" class="fees-delete-btn">Delete</button>
+                  </form>
+                </td>
+                {% endif %}
               </tr>
             {% else %}
               <tr>
-                <td colspan="11">No fee records found.</td>
+                <td colspan="{% if can_manage_fees %}12{% else %}11{% endif %}">No fee records found.</td>
               </tr>
             {% endfor %}
           </tbody>

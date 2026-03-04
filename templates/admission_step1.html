@@ -65,17 +65,7 @@
             <option>OBC</option>
           </select>
 
-          <select name="alloted_category" required>
-            <option value="">Alloted Category</option>
-            <option>1G</option>
-            <option>SCG</option>
-            <option>STG</option>
-            <option>2AG</option>
-            <option>2BG</option>
-            <option>3AG</option>
-            <option>3BG</option>
-            <option>GM</option>
-          </select>
+          <input type="text" value="Alloted Category will be assigned by Admin/Management" readonly>
         </div>
       </div>
 
@@ -117,6 +107,8 @@
         <h3 class="section-title">Admission Details</h3>
 
         <div class="form-grid two-col">
+          <input name="admission_year" placeholder="Admission Year (YYYY-YY)" value="{{ admission_year }}" required>
+
           <select name="admission_quota" required>
             <option value="">Admission Quota</option>
             <option>Government</option>
